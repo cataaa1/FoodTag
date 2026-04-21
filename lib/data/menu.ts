@@ -1,5 +1,10 @@
 import { getDb } from "@/lib/db/client";
-import type { MenuCategoryWithItems, MenuItem, MenuVariant } from "@/lib/types/domain";
+import type {
+  MenuCategoryWithItems,
+  MenuItem,
+  MenuModifier,
+  MenuVariant,
+} from "@/lib/types/domain";
 
 type CategoryRow = {
   id: string;
@@ -32,6 +37,14 @@ type MenuVariantRow = {
   position: number;
 };
 
+type MenuModifierRow = {
+  id: string;
+  menu_item_id: string;
+  label: string;
+  default_checked: number;
+  position: number;
+};
+
 export function mapVariant(row: MenuVariantRow): MenuVariant {
   return {
     id: row.id,
@@ -43,7 +56,21 @@ export function mapVariant(row: MenuVariantRow): MenuVariant {
   };
 }
 
-export function mapMenuItem(row: MenuItemRow, variants: MenuVariant[]): MenuItem {
+export function mapModifier(row: MenuModifierRow): MenuModifier {
+  return {
+    id: row.id,
+    menuItemId: row.menu_item_id,
+    label: row.label,
+    defaultChecked: Boolean(row.default_checked),
+    position: row.position,
+  };
+}
+
+export function mapMenuItem(
+  row: MenuItemRow,
+  variants: MenuVariant[],
+  modifiers: MenuModifier[],
+): MenuItem {
   return {
     id: row.id,
     categoryId: row.category_id,
@@ -57,6 +84,7 @@ export function mapMenuItem(row: MenuItemRow, variants: MenuVariant[]): MenuItem
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     variants,
+    modifiers,
   };
 }
 
@@ -73,6 +101,11 @@ export async function getMenuData() {
   const variants = db
     .prepare<[], MenuVariantRow>("select * from menu_variant order by position asc")
     .all();
+  const modifiers = db
+    .prepare<[], MenuModifierRow>(
+      "select * from menu_item_modifier order by position asc",
+    )
+    .all();
 
   return categories.map((category) => {
     const categoryItems = items
@@ -83,6 +116,9 @@ export async function getMenuData() {
           variants
             .filter((variant) => variant.menu_item_id === item.id)
             .map(mapVariant),
+          modifiers
+            .filter((modifier) => modifier.menu_item_id === item.id)
+            .map(mapModifier),
         ),
       );
 

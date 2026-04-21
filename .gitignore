@@ -36,9 +36,6 @@ yarn-error.log*
 # vercel
 .vercel
 
-# Supabase CLI local metadata
-supabase/.temp/
-
 # Local SQLite database
 /data/*.sqlite
 /data/*.sqlite-shm

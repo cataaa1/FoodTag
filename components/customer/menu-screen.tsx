@@ -1,14 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { Flame, QrCode, Store } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { getCartTotals, useCartStore } from "@/components/customer/cart-store";
+import { PhoneShell, PrimaryPhoneButton, StatusBar } from "@/components/customer/phone-shell";
+import { formatCurrency } from "@/lib/utils/format";
 import { fetchJson } from "@/lib/utils/http";
 
 type TruckStatus = {
@@ -17,43 +15,49 @@ type TruckStatus = {
   paused: boolean;
   reason: string | null;
   truckName: string;
-  primaryColor: string;
   todayHoursLabel: string;
 };
 
-type MenuVariant = {
+type Customer = { id: string; name: string; phone: string };
+type MenuVariant = { id: string; name: string; priceCents: number; available: boolean };
+type MenuModifier = {
   id: string;
-  name: string;
-  priceCents: number;
-  available: boolean;
+  label: string;
+  defaultChecked: boolean;
+  position: number;
 };
-
 type MenuItem = {
   id: string;
   name: string;
   description: string | null;
   priceCents: number;
-  photoUrl: string | null;
   available: boolean;
   hasVariants: boolean;
   variants: MenuVariant[];
+  modifiers: MenuModifier[];
 };
+type MenuCategory = { id: string; name: string; items: MenuItem[] };
+type SessionDraft = { name: string; phone: string };
 
-type MenuCategory = {
-  id: string;
-  name: string;
-  items: MenuItem[];
-};
-
-type SessionDraft = {
-  name: string;
-  phone: string;
-};
-
-const SESSION_STORAGE_KEY = "foodtag-customer-draft";
 const EMPTY_CATEGORIES: MenuCategory[] = [];
+const ITEM_EMOJIS = ["🍔", "🍗", "🥓", "🍟", "🧀", "🥤", "💧", "🍫", "🍪"] as const;
+
+function itemEmoji(index: number) {
+  return ITEM_EMOJIS[index % ITEM_EMOJIS.length];
+}
 
 export function MenuScreen() {
+  const router = useRouter();
+  const [draft, setDraft] = useState<SessionDraft>({ name: "", phone: "" });
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const [configItem, setConfigItem] = useState<MenuItem | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+  const [selectedModifiers, setSelectedModifiers] = useState<Record<string, boolean>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const addItem = useCartStore((state) => state.addItem);
+  const cartItems = useCartStore((state) => state.items);
+  const cartTotals = getCartTotals(cartItems);
+
   const statusQuery = useQuery({
     queryKey: ["truck-status"],
     queryFn: () => fetchJson<TruckStatus>("/api/customer/truck-status"),
@@ -62,263 +66,545 @@ export function MenuScreen() {
     queryKey: ["public-menu"],
     queryFn: () => fetchJson<{ categories: MenuCategory[] }>("/api/menu"),
   });
+  const sessionQuery = useQuery({
+    queryKey: ["customer-session"],
+    queryFn: () => fetchJson<{ customer: Customer | null }>("/api/customer/session"),
+  });
 
-  const [draft, setDraft] = useState<SessionDraft>({ name: "", phone: "" });
-  const [sessionReady, setSessionReady] = useState(false);
-  const [cartCount, setCartCount] = useState(0);
+  const sessionMutation = useMutation({
+    mutationFn: (payload: SessionDraft) =>
+      fetchJson<{ customer: Customer }>("/api/customer/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: async (data) => {
+      setFormError(null);
+      setDraft({ name: data.customer.name, phone: data.customer.phone });
+      await sessionQuery.refetch();
+    },
+    onError: (error) => {
+      setFormError(error instanceof Error ? error.message : "No pudimos iniciar sesión");
+    },
+  });
+
+  const categories = menuQuery.data?.categories ?? EMPTY_CATEGORIES;
+  const customer = sessionQuery.data?.customer ?? null;
+  const activeCategory =
+    categories.find((category) => category.id === activeCategoryId) ?? categories[0];
 
   useEffect(() => {
-    const stored = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
-    if (!stored) {
+    if (!activeCategoryId && categories[0]) {
+      setActiveCategoryId(categories[0].id);
+    }
+  }, [activeCategoryId, categories]);
+
+  const categoryItems = useMemo(() => activeCategory?.items ?? [], [activeCategory]);
+
+  function submitSession(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    sessionMutation.mutate(draft);
+  }
+
+  function openConfig(item: MenuItem) {
+    if (!item.available) return;
+    const availableVariants = item.variants.filter((variant) => variant.available);
+    const modifierDefaults = Object.fromEntries(
+      item.modifiers.map((modifier) => [modifier.id, modifier.defaultChecked]),
+    );
+
+    if (!item.hasVariants && item.modifiers.length === 0) {
+      addMenuItem(item, null, {});
       return;
     }
 
-    const parsed = JSON.parse(stored) as SessionDraft;
-    setDraft(parsed);
-    setSessionReady(Boolean(parsed.name && parsed.phone));
-  }, []);
-
-  const categories = menuQuery.data?.categories ?? EMPTY_CATEGORIES;
-  const visibleItems = useMemo(
-    () =>
-      categories.flatMap((category) =>
-        category.items.filter((item) => item.available).map((item) => ({
-          ...item,
-          categoryName: category.name,
-        })),
-      ),
-    [categories],
-  );
-
-  function handleSessionSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(draft));
-    setSessionReady(true);
+    setSelectedVariantId(availableVariants[0]?.id ?? null);
+    setSelectedModifiers(modifierDefaults);
+    setConfigItem(item);
   }
 
-  const truckName = statusQuery.data?.truckName ?? "FoodTag Truck";
+  function buildModifierNote(item: MenuItem, values: Record<string, boolean>) {
+    const changes = item.modifiers.flatMap((modifier) => {
+      const selected = values[modifier.id] ?? modifier.defaultChecked;
 
-  return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-4 py-6 md:px-6 md:py-8">
-      <section className="surface-card surface-glow overflow-hidden border-white/70">
-        <div className="grid gap-6 px-6 py-8 md:grid-cols-[1.2fr_0.8fr] md:px-10">
-          <div className="space-y-5">
-            <Badge className="rounded-full px-4 py-1.5 text-xs font-extrabold tracking-[0.24em] uppercase">
-              FoodTag MVP
-            </Badge>
-            <div className="space-y-3">
-              <h1 className="max-w-2xl text-4xl font-black tracking-tight md:text-6xl">
-                Pedí desde tu celu y esperá el beeper digital.
-              </h1>
-              <p className="max-w-xl text-sm leading-6 text-muted-foreground md:text-base">
-                Un solo QR, menú vivo, pago obligatorio antes de cocina y ticket
-                listo para la próxima fase de checkout.
+      if (selected === modifier.defaultChecked) {
+        return [];
+      }
+
+      const normalized = modifier.label.replace(/^con\s+/i, "").toLowerCase();
+      return selected ? [`con ${normalized}`] : [`sin ${normalized}`];
+    });
+
+    return changes.join(", ") || null;
+  }
+
+  function addMenuItem(
+    item: MenuItem,
+    variant: MenuVariant | null,
+    modifierValues: Record<string, boolean>,
+  ) {
+    const customizationKey = item.modifiers.length
+      ? item.modifiers
+          .map((modifier) => `${modifier.id}:${modifierValues[modifier.id] ?? modifier.defaultChecked}`)
+          .join("|")
+      : null;
+
+    addItem({
+      menuItemId: item.id,
+      menuVariantId: variant?.id ?? null,
+      name: item.name,
+      variantName: variant?.name ?? null,
+      unitPriceCents: variant?.priceCents ?? item.priceCents,
+      notes: buildModifierNote(item, modifierValues),
+      customizationKey,
+    });
+  }
+
+  function confirmConfig() {
+    if (!configItem) return;
+    const variant =
+      configItem.variants.find((entry) => entry.id === selectedVariantId) ?? null;
+
+    if (configItem.hasVariants && !variant) return;
+
+    addMenuItem(configItem, variant, selectedModifiers);
+    setConfigItem(null);
+  }
+
+  if (statusQuery.data && !statusQuery.data.isOpen) {
+    return <ClosedScreen status={statusQuery.data} />;
+  }
+
+  if (!customer) {
+    return (
+      <PhoneShell>
+        <StatusBar />
+        <div className="relative h-[200px] shrink-0 overflow-hidden bg-[#1c1009]">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,#c2410c_0%,#f97316_45%,#fed7aa_100%)]">
+            <span className="text-[52px] drop-shadow-[0_4px_12px_rgba(0,0,0,0.30)]">🚚</span>
+            <span className="text-[11px] font-bold uppercase tracking-[2px] text-white/60">
+              Foto del truck
+            </span>
+          </div>
+          <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(to_top,#fff8f1,transparent)]" />
+          <div className="absolute inset-x-0 bottom-3 text-center">
+            <h1 className="text-[22px] font-black tracking-[-0.5px] text-[#1c1009] drop-shadow-[0_1px_0_rgba(255,255,255,0.5)]">
+              El Smash del Barrio
+            </h1>
+            <p className="text-xs font-medium text-[#9a7560]">
+              Food Truck · Av. Corrientes 1500
+            </p>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 pb-[100px] pt-6 [scrollbar-width:none]">
+          <div className="mb-6 flex items-start gap-3 rounded-2xl bg-[#fff1e6] px-[18px] py-4">
+            <span className="shrink-0 text-[22px]">👋</span>
+            <div>
+              <p className="mb-1 text-sm font-bold">¡Hola! Pedí desde acá</p>
+              <p className="text-[13px] leading-[1.5] text-[#6b4e35]">
+                Te vamos a avisar <strong>en esta pantalla</strong> cuando tu pedido
+                esté listo. No hace falta descargar nada.
               </p>
-            </div>
-            <div className="flex flex-wrap gap-3 text-sm">
-              <div className="rounded-full bg-primary/10 px-4 py-2 font-semibold text-primary">
-                {statusQuery.data?.isOpen ? "Abierto ahora" : "Cerrado"}
-              </div>
-              <div className="rounded-full bg-secondary px-4 py-2 font-semibold text-secondary-foreground">
-                Horario de hoy: {statusQuery.data?.todayHoursLabel ?? "cargando..."}
-              </div>
             </div>
           </div>
 
-          <Card className="rounded-[32px] border-border/80 bg-[#fff8f1] p-1 shadow-[0_30px_80px_rgba(28,16,9,0.15)]">
-            <CardContent className="rounded-[28px] border border-white/80 bg-gradient-to-b from-[#fffaf5] to-[#fff1e6] p-6">
-              <div className="mb-6 flex items-center justify-between text-sm font-semibold">
-                <span>{truckName}</span>
-                <span className="ticket-font text-muted-foreground">9:41</span>
-              </div>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 rounded-2xl bg-white/80 px-4 py-3">
-                  <QrCode className="size-5 text-primary" />
-                  <div>
-                    <p className="font-bold">Un único QR por truck</p>
-                    <p className="text-sm text-muted-foreground">
-                      La URL fija del MVP es `/menu`.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 rounded-2xl bg-white/80 px-4 py-3">
-                  <Flame className="size-5 text-primary" />
-                  <div>
-                    <p className="font-bold">Beeper in-tab</p>
-                    <p className="text-sm text-muted-foreground">
-                      Audio y vibración quedan preparados para Fase 2.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 rounded-2xl bg-white/80 px-4 py-3">
-                  <Store className="size-5 text-primary" />
-                  <div>
-                    <p className="font-bold">Menú administrable</p>
-                    <p className="text-sm text-muted-foreground">
-                      Todo lo que ve el cliente sale del panel admin.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <form onSubmit={submitSession}>
+            <PhoneField label="¿Cómo te llamás?">
+              <input
+                autoComplete="given-name"
+                className="phone-input"
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, name: event.target.value }))
+                }
+                placeholder="Tu nombre"
+                required
+                value={draft.name}
+              />
+            </PhoneField>
+            <PhoneField label="¿Tu número de WhatsApp?">
+              <input
+                autoComplete="tel"
+                className="phone-input"
+                inputMode="numeric"
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, phone: event.target.value }))
+                }
+                placeholder="Ej: 11 2345-6789"
+                required
+                type="tel"
+                value={draft.phone}
+              />
+              <span className="mt-1.5 block text-xs text-[#9a7560]">
+                Solo para avisarte cuando esté tu pedido 🔔
+              </span>
+            </PhoneField>
+            {formError ? (
+              <p className="mb-4 rounded-xl border border-[#ef4444]/25 bg-[#ef4444]/10 px-4 py-3 text-sm font-semibold text-[#ef4444]">
+                {formError}
+              </p>
+            ) : null}
+            <PrimaryPhoneButton disabled={sessionMutation.isPending} type="submit">
+              {sessionMutation.isPending ? "Guardando..." : "Ver menú →"}
+            </PrimaryPhoneButton>
+          </form>
         </div>
-      </section>
 
-      {!statusQuery.data?.isOpen ? (
-        <Card className="surface-card border-white/70 bg-card/95">
-          <CardContent className="space-y-3 p-8 text-center">
-            <p className="text-3xl font-black tracking-tight">El truck está cerrado</p>
-            <p className="text-muted-foreground">
-              {statusQuery.data?.paused
-                ? statusQuery.data.reason ?? "Pausa manual activa"
-                : `Próxima apertura: ${statusQuery.data?.nextOpeningLabel ?? "a definir"}`}
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          <section className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-            <Card className="surface-card border-white/70">
-              <CardContent className="space-y-4 p-6">
-                <div>
-                  <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-primary">
-                    Sesión cliente
-                  </p>
-                  <h2 className="mt-2 text-2xl font-black tracking-tight">
-                    Antes de empezar, contanos quién sos
-                  </h2>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    En Fase 1 queda como preparación visual/local; la cookie JWT
-                    httpOnly entra en Fase 2.
-                  </p>
-                </div>
-                <form className="space-y-4" onSubmit={handleSessionSubmit}>
-                  <div className="space-y-2">
-                    <Label htmlFor="customer-name">Nombre</Label>
-                    <Input
-                      id="customer-name"
-                      value={draft.name}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))
-                      }
-                      placeholder="Catalina"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="customer-phone">Teléfono</Label>
-                    <Input
-                      id="customer-phone"
-                      value={draft.phone}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          phone: event.target.value,
-                        }))
-                      }
-                      placeholder="11 5555-5555"
-                      required
-                    />
-                  </div>
-                  <Button className="w-full" type="submit">
-                    {sessionReady ? "Actualizar datos del dispositivo" : "Usar este dispositivo"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
+        <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,#fff8f1_80%,transparent)] px-6 pb-5 pt-3 text-center">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f0ddd0] px-3.5 py-1.5 text-xs font-semibold text-[#6b4e35]">
+            <span className="size-2 rounded-full bg-[#22c55e]" />
+            {statusQuery.data?.todayHoursLabel ?? "Abierto hasta las 23:00"}
+          </span>
+        </div>
+      </PhoneShell>
+    );
+  }
 
-            <Card className="surface-card border-white/70">
-              <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
-                <div className="space-y-3">
-                  <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-primary">
-                    Estado de la fase
-                  </p>
-                  <h2 className="text-2xl font-black tracking-tight">
-                    Menú público listo para integrarse con carrito y pago
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Ya estamos consultando `/api/menu` y `/api/customer/truck-status`
-                    en tiempo real. El botón de compra final se habilita cuando
-                    entremos en Fase 2.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <Badge variant={sessionReady ? "default" : "secondary"}>
-                    {sessionReady ? "Sesión local lista" : "Sin sesión persistida"}
-                  </Badge>
-                  <Badge variant="outline">{visibleItems.length} ítems disponibles</Badge>
-                  <Badge variant="outline">{cartCount} ítems en demo carrito</Badge>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
+  return (
+    <PhoneShell>
+      <StatusBar />
+      <header className="shrink-0 border-b border-[#f0ddd0] bg-[#fff8f1] px-5 pb-3">
+        <div className="mb-2.5 flex items-center justify-between">
+          <div>
+            <h1 className="text-[17px] font-black tracking-[-0.3px]">El Smash del Barrio</h1>
+            <p className="text-xs font-medium text-[#9a7560]">Hola, {customer.name} 👋</p>
+          </div>
+          <button
+            className="relative flex items-center gap-1.5 rounded-xl bg-[#f97316] px-3.5 py-2 text-sm font-black text-white"
+            onClick={() => router.push("/cart")}
+            type="button"
+          >
+            <span className="text-lg leading-none">🛒</span>
+            {formatCurrency(cartTotals.subtotalCents)}
+            {cartTotals.count > 0 ? (
+              <span className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-[#ef4444] text-[11px] font-black text-white">
+                {cartTotals.count}
+              </span>
+            ) : null}
+          </button>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+          {categories.map((category) => (
+            <button
+              className={
+                category.id === activeCategory?.id
+                  ? "shrink-0 rounded-full bg-[#f97316] px-3.5 py-1.5 text-[13px] font-bold text-white"
+                  : "shrink-0 rounded-full bg-[#f0ddd0] px-3.5 py-1.5 text-[13px] font-bold text-[#6b4e35]"
+              }
+              key={category.id}
+              onClick={() => setActiveCategoryId(category.id)}
+              type="button"
+            >
+              {category.name}
+            </button>
+          ))}
+        </div>
+      </header>
 
-          <section className="space-y-6">
-            {categories.map((category) => (
-              <div key={category.id} className="space-y-3">
-                <div className="flex items-end justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-primary">
-                      Categoría
-                    </p>
-                    <h2 className="text-2xl font-black tracking-tight">{category.name}</h2>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {category.items.length} opciones
-                  </p>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {category.items.map((item) => (
-                    <Card
-                      key={item.id}
-                      className="surface-card border-white/70 bg-card/95 transition-transform hover:-translate-y-1"
-                    >
-                      <CardContent className="space-y-4 p-5">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <p className="text-xl font-black tracking-tight">{item.name}</p>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              {item.description || "Sin descripción"}
-                            </p>
-                          </div>
-                          <Badge variant={item.available ? "default" : "secondary"}>
-                            {item.available ? "Disponible" : "Agotado"}
-                          </Badge>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {item.hasVariants
-                            ? item.variants.map((variant) => (
-                                <Badge key={variant.id} variant="outline">
-                                  {variant.name}
-                                </Badge>
-                              ))
-                            : null}
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <p className="text-lg font-black text-primary">
-                            ${item.priceCents.toLocaleString("es-AR")}
-                          </p>
-                          <Button
-                            disabled={!sessionReady || !item.available}
-                            type="button"
-                            onClick={() => setCartCount((count) => count + 1)}
-                          >
-                            {sessionReady ? "Sumar demo" : "Completá tus datos"}
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+      <div className="flex-1 overflow-y-auto pb-28 [scrollbar-width:none]">
+        {categoryItems.map((item, itemIndex) => {
+          const quantity = cartItems
+            .filter((entry) => entry.menuItemId === item.id)
+            .reduce((total, entry) => total + entry.quantity, 0);
+
+          return (
+            <article
+              className="flex gap-3.5 border-b border-[#f0ddd0] px-5 py-3.5"
+              key={item.id}
+              style={{ opacity: item.available ? 1 : 0.5 }}
+            >
+              <div className="relative flex size-[76px] shrink-0 items-center justify-center rounded-xl bg-[#fff1e6] text-4xl">
+                {itemEmoji(itemIndex)}
+                {!item.available ? (
+                  <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-[#fff8f1]/75 text-[10px] font-black text-white">
+                    <span className="rounded-md bg-[#ef4444] px-1.5 py-0.5">AGOTADO</span>
+                  </span>
+                ) : null}
               </div>
-            ))}
-          </section>
-        </>
-      )}
-    </main>
+              <div className="min-w-0 flex-1">
+                <h2 className="mb-0.5 text-[15px] font-bold text-[#1c1009]">{item.name}</h2>
+                <p className="mb-1.5 line-clamp-2 text-xs leading-[1.4] text-[#9a7560]">
+                  {item.description || "Sin descripción"}
+                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-base font-black text-[#f97316]">
+                    {formatCurrency(item.priceCents)}
+                  </p>
+                  {item.available ? (
+                    quantity > 0 ? (
+                      <div className="flex items-center gap-1.5 rounded-full bg-[#fff1e6] p-1">
+                        <span className="min-w-5 text-center text-sm font-black text-[#f97316]">
+                          {quantity}
+                        </span>
+                        <button
+                          className="flex size-7 items-center justify-center rounded-full bg-[#f97316] text-lg font-black text-white"
+                          onClick={() => openConfig(item)}
+                          type="button"
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-[#f97316] text-[22px] font-black leading-none text-white shadow-[0_2px_8px_rgba(249,115,22,0.30)]"
+                        onClick={() => openConfig(item)}
+                        type="button"
+                      >
+                        +
+                      </button>
+                    )
+                  ) : null}
+                </div>
+                {(item.hasVariants || item.modifiers.length > 0) && item.available ? (
+                  <p className="mt-1 flex gap-2 text-[11px] text-[#9a7560]">
+                    {item.hasVariants ? (
+                      <span>
+                        Tamaños: {item.variants.map((variant) => variant.name).join(" / ")}
+                      </span>
+                    ) : null}
+                    {item.modifiers.length > 0 ? (
+                      <span>· {item.modifiers.length} opciones</span>
+                    ) : null}
+                  </p>
+                ) : null}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      {cartTotals.count > 0 ? (
+        <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,#fff8f1_70%,transparent)] px-5 pb-6 pt-3">
+          <PrimaryPhoneButton onClick={() => router.push("/cart")} type="button">
+            Ver carrito · {cartTotals.count} {cartTotals.count === 1 ? "ítem" : "ítems"}
+          </PrimaryPhoneButton>
+        </div>
+      ) : null}
+
+      {configItem ? (
+        <ConfigSheet
+          item={configItem}
+          onClose={() => setConfigItem(null)}
+          onConfirm={confirmConfig}
+          selectedModifiers={selectedModifiers}
+          selectedVariantId={selectedVariantId}
+          setSelectedModifiers={setSelectedModifiers}
+          setSelectedVariantId={setSelectedVariantId}
+        />
+      ) : null}
+    </PhoneShell>
+  );
+}
+
+function PhoneField({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <label className="mb-4 block">
+      <span className="mb-1.5 block text-[13px] font-bold text-[#6b4e35]">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function ConfigSheet({
+  item,
+  onClose,
+  onConfirm,
+  selectedModifiers,
+  selectedVariantId,
+  setSelectedModifiers,
+  setSelectedVariantId,
+}: {
+  item: MenuItem;
+  onClose: () => void;
+  onConfirm: () => void;
+  selectedModifiers: Record<string, boolean>;
+  selectedVariantId: string | null;
+  setSelectedModifiers: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  setSelectedVariantId: React.Dispatch<React.SetStateAction<string | null>>;
+}) {
+  const selectedVariant = item.variants.find((variant) => variant.id === selectedVariantId);
+  const price = selectedVariant?.priceCents ?? item.priceCents;
+
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-end bg-black/40"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        aria-modal="true"
+        className="max-h-[80%] w-full overflow-y-auto rounded-t-[20px] bg-white px-5 pb-9 pt-5 [scrollbar-width:none]"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[#ddd]" />
+        <h2 className="mb-0.5 text-lg font-black">{item.name}</h2>
+        <p className="mb-5 text-[13px] text-[#9a7560]">{item.description}</p>
+
+        {item.hasVariants ? (
+          <div className="mb-5">
+            <p className="mb-2.5 text-xs font-bold uppercase tracking-[0.8px] text-[#6b4e35]">
+              Tamaño
+            </p>
+            {item.variants
+              .filter((variant) => variant.available)
+              .map((variant) => {
+                const selected = selectedVariantId === variant.id;
+
+                return (
+                  <button
+                    className={
+                      selected
+                        ? "mb-2 flex w-full items-center justify-between rounded-xl border-2 border-[#f97316] bg-[#fff1e6] px-4 py-3 text-[15px] font-semibold"
+                        : "mb-2 flex w-full items-center justify-between rounded-xl border-2 border-[#eee] bg-[#f9f9f9] px-4 py-3 text-[15px] font-semibold"
+                    }
+                    key={variant.id}
+                    onClick={() => setSelectedVariantId(variant.id)}
+                    type="button"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <span
+                        className={
+                          selected
+                            ? "flex size-[18px] items-center justify-center rounded-full border-2 border-[#f97316]"
+                            : "flex size-[18px] items-center justify-center rounded-full border-2 border-[#ccc]"
+                        }
+                      >
+                        {selected ? <span className="size-[9px] rounded-full bg-[#f97316]" /> : null}
+                      </span>
+                      {variant.name}
+                    </span>
+                    <span className="font-black text-[#f97316]">
+                      {formatCurrency(variant.priceCents)}
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
+        ) : null}
+
+        {item.modifiers.length > 0 ? (
+          <div className="mb-6">
+            <p className="mb-2.5 text-xs font-bold uppercase tracking-[0.8px] text-[#6b4e35]">
+              Personalizá tu pedido
+            </p>
+            {item.modifiers.map((modifier) => {
+              const checked = selectedModifiers[modifier.id] ?? modifier.defaultChecked;
+
+              return (
+                <button
+                  className={
+                    checked
+                      ? "mb-2 flex w-full items-center gap-3 rounded-xl border-2 border-[#f97316] bg-[#fff1e6] px-4 py-3 text-left"
+                      : "mb-2 flex w-full items-center gap-3 rounded-xl border-2 border-[#eee] bg-[#f9f9f9] px-4 py-3 text-left"
+                  }
+                  key={modifier.id}
+                  onClick={() =>
+                    setSelectedModifiers((current) => ({
+                      ...current,
+                      [modifier.id]: !checked,
+                    }))
+                  }
+                  type="button"
+                >
+                  <span
+                    className={
+                      checked
+                        ? "flex size-[22px] shrink-0 items-center justify-center rounded-md border-2 border-[#f97316] bg-[#f97316] text-sm font-black text-white"
+                        : "size-[22px] shrink-0 rounded-md border-2 border-[#ccc] bg-white"
+                    }
+                  >
+                    {checked ? "✓" : ""}
+                  </span>
+                  <span className="flex-1 text-[15px] font-semibold text-[#1c1009]">
+                    {modifier.label}
+                  </span>
+                  {modifier.defaultChecked ? (
+                    <span className="rounded-md bg-[#f0f0f0] px-2 py-1 text-[10px] font-bold text-[#9a7560]">
+                      por defecto
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
+        <PrimaryPhoneButton
+          disabled={item.hasVariants && !selectedVariant}
+          onClick={onConfirm}
+          type="button"
+        >
+          {item.hasVariants && !selectedVariant
+            ? "Elegí un tamaño"
+            : `Agregar al carrito · ${formatCurrency(price)}`}
+        </PrimaryPhoneButton>
+      </div>
+    </div>
+  );
+}
+
+function ClosedScreen({ status }: { status: TruckStatus }) {
+  return (
+    <PhoneShell>
+      <StatusBar />
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 px-7 text-center">
+        <ClosedTruckIllustration />
+        <h1 className="mt-2 text-[32px] font-black tracking-[-1px]">
+          Estamos cerrados 😴
+        </h1>
+        <p className="max-w-[280px] text-[15px] leading-6 text-[#6b4e35]">
+          {status.paused
+            ? status.reason ?? "El truck está en pausa."
+            : "El truck no está operando en este momento. Volvé pronto."}
+        </p>
+        <div className="mt-2 rounded-2xl bg-white px-6 py-4 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
+          <p className="mb-2 text-xs font-black uppercase tracking-[1px] text-[#9a7560]">
+            Próximo horario
+          </p>
+          <p className="font-black text-[#1c1009]">
+            {status.nextOpeningLabel ?? "A definir"}
+          </p>
+        </div>
+      </div>
+    </PhoneShell>
+  );
+}
+
+function ClosedTruckIllustration() {
+  return (
+    <svg fill="none" height="100" viewBox="0 0 160 100" width="160">
+      <rect fill="#DDD" height="50" rx="8" width="110" x="10" y="40" />
+      <rect fill="#BBB" height="20" rx="8" width="110" x="10" y="40" />
+      <rect fill="#C8B49A" height="20" rx="4" width="90" x="20" y="32" />
+      {[0, 1, 2, 3, 4].map((index) => (
+        <rect fill="#A09080" height="2" key={index} rx="1" width="86" x="22" y={34 + index * 4} />
+      ))}
+      <circle cx="35" cy="96" fill="#888" r="10" />
+      <circle cx="35" cy="96" fill="#CCC" r="5" />
+      <circle cx="95" cy="96" fill="#888" r="10" />
+      <circle cx="95" cy="96" fill="#CCC" r="5" />
+      <rect fill="#DDD" height="30" rx="4" width="30" x="120" y="60" />
+      <rect fill="#BBB" height="10" rx="2" width="20" x="125" y="65" />
+      <rect fill="#CCC" height="4" rx="2" width="16" x="140" y="86" />
+      <rect fill="#EF4444" height="20" rx="6" width="50" x="40" y="20" />
+      <text
+        fill="white"
+        fontFamily="DM Sans"
+        fontSize="9"
+        fontWeight="bold"
+        textAnchor="middle"
+        x="65"
+        y="34"
+      >
+        CERRADO
+      </text>
+    </svg>
   );
 }

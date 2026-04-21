@@ -4,13 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
-import { SectionHeading } from "@/components/shared/section-heading";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { fetchJson } from "@/lib/utils/http";
 
 type HoursEntry = {
@@ -38,9 +31,15 @@ const WEEKDAY_LABELS = [
   "Viernes",
   "Sábado",
 ] as const;
+const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
 
 export function HoursManager() {
   const queryClient = useQueryClient();
+  const [hoursState, setHoursState] = useState<HoursEntry[]>([]);
+  const [showPauseModal, setShowPauseModal] = useState(false);
+  const [pauseReason, setPauseReason] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+
   const hoursQuery = useQuery({
     queryKey: ["admin", "hours"],
     queryFn: () => fetchJson<{ hours: HoursEntry[] }>("/api/admin/hours"),
@@ -50,20 +49,27 @@ export function HoursManager() {
     queryFn: () => fetchJson<TruckStatus>("/api/customer/truck-status"),
   });
 
-  const [hoursState, setHoursState] = useState<HoursEntry[]>([]);
-  const [pauseReason, setPauseReason] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
-
   useEffect(() => {
     if (hoursQuery.data?.hours) {
       setHoursState(hoursQuery.data.hours);
     }
   }, [hoursQuery.data]);
 
-  const openDays = useMemo(
-    () => hoursState.filter((entry) => !entry.closed).length,
+  const orderedHours = useMemo(
+    () =>
+      DISPLAY_ORDER.map((weekday) =>
+        hoursState.find((entry) => entry.weekday === weekday),
+      ).filter((entry): entry is HoursEntry => Boolean(entry)),
     [hoursState],
   );
+
+  async function refreshStatus() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["admin", "hours"] }),
+      queryClient.invalidateQueries({ queryKey: ["truck-status"] }),
+      queryClient.invalidateQueries({ queryKey: ["public-menu"] }),
+    ]);
+  }
 
   const saveHoursMutation = useMutation({
     mutationFn: async () =>
@@ -74,10 +80,7 @@ export function HoursManager() {
       }),
     onSuccess: async () => {
       setMessage("Horarios guardados");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["admin", "hours"] }),
-        queryClient.invalidateQueries({ queryKey: ["truck-status"] }),
-      ]);
+      await refreshStatus();
     },
   });
 
@@ -90,19 +93,17 @@ export function HoursManager() {
       }),
     onSuccess: async () => {
       setMessage("Truck pausado manualmente");
-      await queryClient.invalidateQueries({ queryKey: ["truck-status"] });
       setPauseReason("");
+      setShowPauseModal(false);
+      await refreshStatus();
     },
   });
 
   const resumeMutation = useMutation({
-    mutationFn: async () =>
-      fetchJson("/api/admin/truck/resume", {
-        method: "POST",
-      }),
+    mutationFn: async () => fetchJson("/api/admin/truck/resume", { method: "POST" }),
     onSuccess: async () => {
       setMessage("Pausa manual removida");
-      await queryClient.invalidateQueries({ queryKey: ["truck-status"] });
+      await refreshStatus();
     },
   });
 
@@ -117,178 +118,215 @@ export function HoursManager() {
     );
   }
 
+  const isPaused = truckStatusQuery.data?.paused ?? false;
+
   return (
     <AdminShell
-      title="Horarios y pausa manual"
-      subtitle="Control semanal del truck y cierre instantáneo del servicio."
+      action={
+        isPaused ? (
+          <button
+            className="rounded-[10px] bg-[#22c55e] px-[18px] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_8px_rgba(34,197,94,0.25)]"
+            onClick={() => resumeMutation.mutate()}
+            type="button"
+          >
+            ▶ Reanudar truck
+          </button>
+        ) : (
+          <button
+            className="rounded-[10px] bg-[#ef4444] px-[18px] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_8px_rgba(239,68,68,0.25)]"
+            onClick={() => setShowPauseModal(true)}
+            type="button"
+          >
+            ⏸ Pausar truck ahora
+          </button>
+        )
+      }
+      subtitle="Configurá cuándo está abierto el truck"
+      title="Gestión de horarios"
     >
-      <div className="space-y-6">
-        <SectionHeading
-          eyebrow="Operación"
-          title="Disponibilidad del truck"
-          description="El menú público consulta este estado antes de dejar iniciar el flujo de pedido."
+      {message ? (
+        <div className="mb-5 rounded-[10px] border border-[#f97316]/25 bg-[#fff0e6] px-4 py-3 text-[13px] font-bold text-[#f97316]">
+          {message}
+        </div>
+      ) : null}
+
+      <div className="mb-5 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              <th className="w-[120px] bg-[#f2f2f2] px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.8px] text-[#999] dark:bg-[#242424]">
+                Día
+              </th>
+              <th className="bg-[#f2f2f2] px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.8px] text-[#999] dark:bg-[#242424]">
+                Abierto
+              </th>
+              <th className="bg-[#f2f2f2] px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.8px] text-[#999] dark:bg-[#242424]">
+                Apertura
+              </th>
+              <th className="bg-[#f2f2f2] px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.8px] text-[#999] dark:bg-[#242424]">
+                Cierre
+              </th>
+              <th className="bg-[#f2f2f2] px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.8px] text-[#999] dark:bg-[#242424]">
+                Estado
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {orderedHours.map((entry) => {
+              const active = !entry.closed;
+
+              return (
+                <tr className="hover:bg-[#f2f2f2] dark:hover:bg-[#242424]" key={entry.weekday}>
+                  <td className="border-b border-[#e8e8e8] px-4 py-[13px] text-sm font-bold text-[#111] dark:border-[#2e2e2e] dark:text-[#f5f5f5]">
+                    {WEEKDAY_LABELS[entry.weekday]}
+                  </td>
+                  <td className="border-b border-[#e8e8e8] px-4 py-[13px] dark:border-[#2e2e2e]">
+                    <Toggle
+                      checked={active}
+                      onChange={() => updateHourRow(entry.weekday, { closed: active })}
+                    />
+                  </td>
+                  <td className="border-b border-[#e8e8e8] px-4 py-[13px] dark:border-[#2e2e2e]">
+                    <input
+                      className="admin-input max-w-[135px] disabled:bg-[#f2f2f2] disabled:text-[#999] dark:disabled:bg-[#242424]"
+                      disabled={!active}
+                      onChange={(event) =>
+                        updateHourRow(entry.weekday, {
+                          opensAt: event.target.value ? `${event.target.value}:00` : null,
+                        })
+                      }
+                      type="time"
+                      value={entry.opensAt?.slice(0, 5) ?? ""}
+                    />
+                  </td>
+                  <td className="border-b border-[#e8e8e8] px-4 py-[13px] dark:border-[#2e2e2e]">
+                    <input
+                      className="admin-input max-w-[135px] disabled:bg-[#f2f2f2] disabled:text-[#999] dark:disabled:bg-[#242424]"
+                      disabled={!active}
+                      onChange={(event) =>
+                        updateHourRow(entry.weekday, {
+                          closesAt: event.target.value ? `${event.target.value}:00` : null,
+                        })
+                      }
+                      type="time"
+                      value={entry.closesAt?.slice(0, 5) ?? ""}
+                    />
+                  </td>
+                  <td className="border-b border-[#e8e8e8] px-4 py-[13px] dark:border-[#2e2e2e]">
+                    <span
+                      className="rounded-md px-2.5 py-1 text-[11px] font-bold"
+                      style={{
+                        background: active ? "rgba(34,197,94,0.1)" : "#f2f2f2",
+                        color: active ? "#22c55e" : "#999",
+                      }}
+                    >
+                      {active ? "Abierto" : "Cerrado"}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          className="admin-primary-button px-6 py-3 text-sm"
+          onClick={() => saveHoursMutation.mutate()}
+          type="button"
+        >
+          Guardar cambios
+        </button>
+        <span className="text-xs font-semibold text-[#999]">
+          Estado actual:{" "}
+          {truckStatusQuery.data?.isOpen ? "abierto" : "cerrado"} ·{" "}
+          {truckStatusQuery.data?.todayHoursLabel ?? "sin información"}
+        </span>
+      </div>
+
+      {showPauseModal ? (
+        <PauseModal
+          onClose={() => setShowPauseModal(false)}
+          onSubmit={() => pauseMutation.mutate()}
+          reason={pauseReason}
+          setReason={setPauseReason}
         />
+      ) : null}
+    </AdminShell>
+  );
+}
 
-        {message ? (
-          <div className="rounded-2xl border border-primary/25 bg-primary/10 px-4 py-3 text-sm font-medium text-primary">
-            {message}
-          </div>
-        ) : null}
-
-        <div className="grid gap-6 xl:grid-cols-[1.35fr_0.9fr]">
-          <Card className="surface-card border-white/70">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-xl font-black tracking-tight">
-                Semana operativa
-                <Badge variant="secondary">{openDays} días abiertos</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {hoursState.map((entry) => (
-                <div
-                  key={entry.weekday}
-                  className="rounded-3xl border border-border/70 bg-background/75 p-4"
-                >
-                  <div className="grid gap-4 md:grid-cols-[1.1fr_1fr_1fr] md:items-center">
-                    <div>
-                      <p className="text-base font-bold">
-                        {WEEKDAY_LABELS[entry.weekday]}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {entry.closed
-                          ? "El truck no atiende este día"
-                          : "Horario visible para clientes y staff"}
-                      </p>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Apertura</Label>
-                        <Input
-                          disabled={entry.closed}
-                          type="time"
-                          value={entry.opensAt?.slice(0, 5) ?? ""}
-                          onChange={(event) =>
-                            updateHourRow(entry.weekday, {
-                              opensAt: event.target.value
-                                ? `${event.target.value}:00`
-                                : null,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Cierre</Label>
-                        <Input
-                          disabled={entry.closed}
-                          type="time"
-                          value={entry.closesAt?.slice(0, 5) ?? ""}
-                          onChange={(event) =>
-                            updateHourRow(entry.weekday, {
-                              closesAt: event.target.value
-                                ? `${event.target.value}:00`
-                                : null,
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between rounded-2xl border border-border/70 bg-card px-4 py-3">
-                      <div>
-                        <p className="font-semibold">Día cerrado</p>
-                        <p className="text-sm text-muted-foreground">
-                          Apaga toda la jornada.
-                        </p>
-                      </div>
-                      <Switch
-                        checked={entry.closed}
-                        onCheckedChange={(checked) =>
-                          updateHourRow(entry.weekday, { closed: checked })
-                        }
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <Button
-                className="w-full md:w-auto"
-                type="button"
-                onClick={() => saveHoursMutation.mutate()}
-              >
-                Guardar horarios
-              </Button>
-            </CardContent>
-          </Card>
-
-          <div className="space-y-6">
-            <Card className="surface-card border-white/70">
-              <CardHeader>
-                <CardTitle className="text-xl font-black tracking-tight">
-                  Estado actual
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 text-sm">
-                <div className="rounded-2xl bg-primary/10 px-4 py-3 text-primary">
-                  <p className="font-bold">{truckStatusQuery.data?.truckName ?? "FoodTag Truck"}</p>
-                  <p>
-                    {truckStatusQuery.data?.isOpen
-                      ? "Abierto ahora"
-                      : "Fuera de horario o pausado"}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border/70 bg-background/75 px-4 py-3">
-                  <p className="font-semibold">Horario de hoy</p>
-                  <p className="text-muted-foreground">
-                    {truckStatusQuery.data?.todayHoursLabel ?? "Sin información"}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border/70 bg-background/75 px-4 py-3">
-                  <p className="font-semibold">Pausa manual</p>
-                  <p className="text-muted-foreground">
-                    {truckStatusQuery.data?.paused
-                      ? truckStatusQuery.data.reason ?? "Pausado"
-                      : "No hay pausa activa"}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="surface-card border-white/70">
-              <CardHeader>
-                <CardTitle className="text-xl font-black tracking-tight">
-                  Pausar truck ahora
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Motivo visible para operación</Label>
-                  <Input
-                    value={pauseReason}
-                    onChange={(event) => setPauseReason(event.target.value)}
-                    placeholder="Falta de stock, corte de gas, lluvia..."
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    className="flex-1"
-                    type="button"
-                    onClick={() => pauseMutation.mutate()}
-                  >
-                    Pausar manualmente
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    type="button"
-                    variant="secondary"
-                    onClick={() => resumeMutation.mutate()}
-                  >
-                    Reanudar
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+function PauseModal({
+  onClose,
+  onSubmit,
+  reason,
+  setReason,
+}: {
+  onClose: () => void;
+  onSubmit: () => void;
+  reason: string;
+  setReason: (reason: string) => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-5"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[400px] rounded-[20px] bg-white p-7 dark:bg-[#1a1a1a]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-3 text-center text-5xl">⏸</div>
+        <div className="mb-1.5 text-center text-lg font-black text-[#111] dark:text-[#f5f5f5]">
+          ¿Pausar el truck?
+        </div>
+        <div className="mb-5 text-center text-[13px] text-[#999]">
+          Los clientes verán que están cerrados hasta que lo retomes.
+        </div>
+        <label className="mb-4 block">
+          <span className="mb-1.5 block text-xs font-bold text-[#555] dark:text-[#a0a0a0]">
+            Motivo (opcional)
+          </span>
+          <input
+            className="admin-input"
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Ej: Sin gas, lluvia..."
+            value={reason}
+          />
+        </label>
+        <div className="flex gap-2.5">
+          <button
+            className="flex-[2] rounded-[10px] bg-[#ef4444] p-[13px] text-sm font-bold text-white"
+            onClick={onSubmit}
+            type="button"
+          >
+            Pausar ahora
+          </button>
+          <button className="admin-muted-button flex-1" onClick={onClose} type="button">
+            Cancelar
+          </button>
         </div>
       </div>
-    </AdminShell>
+    </div>
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      className="admin-toggle"
+      data-checked={checked}
+      onClick={onChange}
+      type="button"
+    >
+      <span className="admin-toggle-thumb" />
+    </button>
   );
 }

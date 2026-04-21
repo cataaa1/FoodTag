@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FoodTag — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #FAFAFA;
+  --bg2: #FFFFFF;
+  --bg3: #F2F2F2;
+  --sidebar-bg: #FFFFFF;
+  --sidebar-border: #E8E8E8;
+  --border: #E8E8E8;
+  --text: #111;
+  --text2: #555;
+  --text3: #999;
+  --nav-text: #555;
+  --nav-text-active: #F97316;
+  --nav-bg-active: #FFF0E6;
+  --nav-bg-hover: #F5F5F5;
+  --orange: #F97316;
+  --orange-light: #FFF0E6;
+  --red: #EF4444;
+  --green: #22C55E;
+  --yellow: #EAB308;
+  --radius: 12px;
+  --topbar-bg: #FFFFFF;
+  --card-bg: #FFFFFF;
+}
+body.dark {
+  --bg: #111;
+  --bg2: #1A1A1A;
+  --bg3: #242424;
+  --sidebar-bg: #1A1A1A;
+  --sidebar-border: rgba(255,255,255,0.07);
+  --border: #2E2E2E;
+  --text: #F5F5F5;
+  --text2: #A0A0A0;
+  --text3: #606060;
+  --nav-text: rgba(255,255,255,0.45);
+  --nav-text-active: #fff;
+  --nav-bg-active: rgba(249,115,22,0.2);
+  --nav-bg-hover: rgba(255,255,255,0.05);
+  --topbar-bg: #1A1A1A;
+  --card-bg: #1A1A1A;
+}
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; transition: background 0.25s, color 0.25s; }
+button { cursor: pointer; font-family: 'DM Sans', sans-serif; border: none; outline: none; }
+input, select, textarea { font-family: 'DM Sans', sans-serif; }
+.scrollable::-webkit-scrollbar { width: 4px; }
+.scrollable::-webkit-scrollbar-track { background: transparent; }
+.scrollable::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: 220px; flex-shrink: 0; background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  display: flex; flex-direction: column; padding: 20px 0;
+  position: fixed; left: 0; top: 0; bottom: 0; z-index: 10;
+  transition: background 0.25s, border-color 0.25s;
+}
+.sidebar-logo { padding: 4px 20px 20px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--sidebar-border); margin-bottom: 12px; }
+.sidebar-logo .icon { width:38px;height:38px;background:var(--orange);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px; }
+.sidebar-logo .name { font-size: 16px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
+.sidebar-logo .role { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 13px; font-weight: 600; color: var(--nav-text); cursor: pointer; transition: all 0.15s; }
+.nav-item:hover { color: var(--text); background: var(--nav-bg-hover); }
+.nav-item.active { color: var(--nav-text-active); background: var(--nav-bg-active); border-right: 3px solid var(--orange); }
+.nav-item .nav-icon { font-size: 16px; width: 22px; text-align: center; }
+.sidebar-bottom { margin-top: auto; padding: 0 16px; }
+
+.main { margin-left: 220px; flex: 1; min-height: 100vh; }
+.topbar { background: var(--topbar-bg); border-bottom: 1px solid var(--border); padding: 16px 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 5; transition: background 0.25s; }
+.page-content { padding: 28px; }
+
+/* ── CARDS ── */
+.card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); transition: background 0.25s, border-color 0.25s; }
+.metric-card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); padding: 20px; transition: background 0.25s; }
+
+/* ── TABLE ── */
+table { width: 100%; border-collapse: collapse; }
+th { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; padding: 10px 16px; text-align: left; background: var(--bg3); transition: background 0.25s; }
+td { padding: 13px 16px; font-size: 14px; color: var(--text2); border-bottom: 1px solid var(--border); transition: background 0.25s; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg3); }
+
+/* ── DEV NAV ── */
+.dev-nav {
+  position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 6px; background: rgba(0,0,0,0.85); padding: 7px 10px;
+  border-radius: 999px; z-index: 1000;
+}
+.dev-nav button { background: rgba(255,255,255,0.1); color: white; font-size: 11px; font-weight: 600; padding: 4px 12px; border-radius: 999px; transition: background 0.15s; white-space: nowrap; }
+.dev-nav button:hover { background: rgba(255,255,255,0.2); }
+.dev-nav button.active { background: var(--orange); }
+
+.tweaks-panel {
+  position: fixed; bottom: 56px; right: 16px; background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); padding: 16px; width: 220px; z-index: 999; display: none;
+}
+.tweaks-panel.open { display: block; }
+.tweaks-panel h3 { font-size: 12px; font-weight: 700; margin-bottom: 12px; color: #333; text-transform: uppercase; letter-spacing: 1px; }
+.tweak-row { margin-bottom: 10px; }
+.tweak-row label { font-size: 11px; font-weight: 600; color: #666; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.tweak-row select { width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #eee; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "chartStyle": "bar",
+  "accentColor": "#F97316",
+  "density": "normal"
+}/*EDITMODE-END*/;
+
+function fmt(n) { return "$" + n.toLocaleString("es-AR"); }
+
+// ── SIDEBAR ────────────────────────────────────────────────
+const NAV = [
+  { id:"dashboard", icon:"📊", label:"Dashboard" },
+  { id:"menu",      icon:"🍔", label:"Gestión de menú" },
+  { id:"hours",     icon:"🕐", label:"Horarios" },
+  { id:"users",     icon:"👥", label:"Usuarios y roles" },
+];
+
+function Sidebar({ active, setActive, dark, setDark }) {
+  return (
+    <div className="sidebar">
+      <div className="sidebar-logo">
+        <div className="icon">🚚</div>
+        <div>
+          <div className="name">FoodTag</div>
+          <div className="role">Admin · El Smash</div>
+        </div>
+      </div>
+      {NAV.map(n => (
+        <div key={n.id} className={`nav-item ${active===n.id?"active":""}`} onClick={() => setActive(n.id)}>
+          <span className="nav-icon">{n.icon}</span>
+          {n.label}
+        </div>
+      ))}
+      <div style={{height:1,background:"var(--border)",margin:"12px 16px"}}></div>
+      <div className="nav-item" onClick={() => setActive("kanban")}>
+        <span className="nav-icon">📋</span>
+        Ir al Kanban
+      </div>
+      {/* Dark mode toggle */}
+      <div style={{padding:"6px 16px"}}>
+        <div onClick={() => setDark(d => !d)} style={{
+          display:"flex",alignItems:"center",justifyContent:"space-between",
+          padding:"10px 14px",borderRadius:10,cursor:"pointer",
+          background:"var(--bg3)",border:"1px solid var(--border)",
+          transition:"all 0.2s"
+        }}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:15}}>{dark ? "☀️" : "🌙"}</span>
+            <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{dark ? "Modo claro" : "Modo oscuro"}</span>
+          </div>
+          <div style={{
+            width:36,height:20,borderRadius:99,
+            background:dark?"var(--orange)":"var(--border)",
+            position:"relative",transition:"background 0.2s"
+          }}>
+            <div style={{
+              position:"absolute",top:3,
+              left:dark?18:3,
+              width:14,height:14,borderRadius:"50%",
+              background:"var(--card-bg)",transition:"left 0.2s",
+              boxShadow:"0 1px 3px rgba(0,0,0,0.2)"
+            }}></div>
+          </div>
+        </div>
+      </div>
+      <div className="sidebar-bottom">
+        <div style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#EF4444",marginBottom:6}}>⏸ Estado del truck</div>
+          <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+            <span style={{width:8,height:8,background:"#22C55E",borderRadius:"50%",flexShrink:0}}></span>
+            <span style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}>Abierto hasta las 23:00</span>
+          </div>
+          <button style={{width:"100%",padding:"8px",background:"rgba(239,68,68,0.2)",color:"#EF4444",borderRadius:8,fontWeight:700,fontSize:12,border:"1px solid rgba(239,68,68,0.3)"}}>
+            Pausar truck ahora
+          </button>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 4px"}}>
+          <div style={{width:30,height:30,borderRadius:8,background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>👤</div>
+          <div>
+            <div style={{fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.8)"}}>Admin</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.35)"}}>admin@foodtag.ar</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DASHBOARD ──────────────────────────────────────────────
+const HOURLY = [12,8,15,22,30,28,19,14,9,5,2];
+const HOURS  = ["12","13","14","15","16","17","18","19","20","21","22"];
+
+function BarChart({ data, labels }) {
+  const max = Math.max(...data);
+  return (
+    <div style={{display:"flex",alignItems:"flex-end",gap:6,height:120,padding:"0 4px"}}>
+      {data.map((v,i) => (
+        <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+          <div style={{width:"100%",background:`rgba(249,115,22,${0.2+0.8*(v/max)})`,borderRadius:"4px 4px 0 0",height:`${(v/max)*100}%`,transition:"height 0.3s",minHeight:4}}></div>
+          <span style={{fontSize:10,color:"var(--text3)",fontWeight:500}}>{labels[i]}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Dashboard() {
+  const metrics = [
+    { label:"Vendido hoy",         value:"$142.800", sub:"+12% vs ayer", color:"var(--orange)", icon:"💰" },
+    { label:"Pedidos totales",     value:"38",       sub:"6 en curso",    color:"var(--green)",  icon:"🧾" },
+    { label:"Ítem más vendido",    value:"Classic Smash", sub:"14 unidades", color:"var(--yellow)", icon:"🏆" },
+    { label:"Ticket promedio",     value:"$3.758",   sub:"propina incl.", color:"#3B82F6",      icon:"📊" },
+    { label:"Tiempo prom. prep.",  value:"8 min",    sub:"−2 min vs ayer",color:"var(--green)", icon:"⏱" },
+  ];
+
+  return (
+    <div>
+      <div className="topbar">
+        <div>
+          <div style={{fontSize:20,fontWeight:800,color:"var(--text)",letterSpacing:"-0.4px"}}>Dashboard del día</div>
+          <div style={{fontSize:12,color:"var(--text3)"}}>Lunes 20 de abril · Turno activo desde las 12:00</div>
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <button style={{padding:"9px 16px",background:"var(--orange)",color:"white",borderRadius:10,fontWeight:700,fontSize:13,boxShadow:"0 2px 8px rgba(249,115,22,0.25)"}}>↻ Actualizar</button>
+        </div>
+      </div>
+      <div className="page-content">
+        {/* Metrics */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:14,marginBottom:24}}>
+          {metrics.map(m => (
+            <div key={m.label} className="metric-card" style={{borderTop:`3px solid ${m.color}`}}>
+              <div style={{fontSize:22,marginBottom:8}}>{m.icon}</div>
+              <div style={{fontSize:22,fontWeight:800,color:"var(--text)",letterSpacing:"-0.5px",marginBottom:2}}>{m.value}</div>
+              <div style={{fontSize:12,fontWeight:600,color:"var(--text3)",marginBottom:2}}>{m.label}</div>
+              <div style={{fontSize:11,color:m.color,fontWeight:600}}>{m.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16}}>
+          {/* Sales chart */}
+          <div className="card" style={{padding:20}}>
+            <div style={{fontSize:14,fontWeight:700,marginBottom:4}}>Ventas por hora</div>
+            <div style={{fontSize:12,color:"var(--text3)",marginBottom:16}}>Hoy — pedidos completados</div>
+            <BarChart data={HOURLY} labels={HOURS}/>
+          </div>
+
+          {/* Quick actions */}
+          <div className="card" style={{padding:20}}>
+            <div style={{fontSize:14,fontWeight:700,marginBottom:16}}>Accesos rápidos</div>
+            {[
+              {icon:"📋", label:"Ir al Kanban", color:"#3B82F6"},
+              {icon:"⏸",  label:"Pausar truck", color:"#EF4444"},
+              {icon:"🍔", label:"Gestionar menú", color:"var(--orange)"},
+            ].map(a => (
+              <button key={a.label} style={{
+                width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",
+                borderRadius:10,marginBottom:8,background:"var(--bg3)",border:"none",
+                fontSize:13,fontWeight:600,color:"var(--text)",cursor:"pointer",
+                transition:"background 0.15s"
+              }}>
+                <span style={{fontSize:18}}>{a.icon}</span> {a.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MENÚ ──────────────────────────────────────────────────
+const MENU_CATS = ["Hamburguesas","Papas","Bebidas","Postres"];
+const MENU_ITEMS = {
+  Hamburguesas: [
+    {id:1, name:"Classic Smash", price:2800, available:true, variants:true},
+    {id:2, name:"Crispy Chicken", price:2600, available:true, variants:false},
+    {id:3, name:"BBQ Bacon", price:3200, available:false, variants:true},
+  ],
+  Papas: [
+    {id:4, name:"Papas Fritas", price:1200, available:true, variants:false},
+    {id:5, name:"Papas Cheddar", price:1600, available:true, variants:false},
+  ],
+  Bebidas: [
+    {id:6, name:"Gaseosa", price:800, available:true, variants:false},
+    {id:7, name:"Agua con gas", price:600, available:true, variants:false},
+  ],
+  Postres: [
+    {id:8, name:"Brownie", price:1400, available:false, variants:false},
+    {id:9, name:"Alfajor artesanal", price:900, available:true, variants:false},
+  ],
+};
+
+function MenuManager() {
+  const [activeCat, setActiveCat] = useState("Hamburguesas");
+  const [items, setItems] = useState(MENU_ITEMS);
+  const [editItem, setEditItem] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+
+  // Modal local state
+  const [modalVariants, setModalVariants] = useState([]);
+  const [modalMods, setModalMods]         = useState([]);
+  const [hasVariants, setHasVariants]     = useState(false);
+  const [hasMods, setHasMods]             = useState(false);
+
+  function openModal(item) {
+    setEditItem(item || null);
+    if (item) {
+      const vList = item.variantList || [];
+      setModalVariants(vList.length ? vList : [{name:"",price:""}]);
+      setHasVariants(item.variants);
+      const mList = item.modList || [];
+      setModalMods(mList.length ? mList : [{label:"",default:false}]);
+      setHasMods(item.hasMods || false);
+    } else {
+      setModalVariants([{name:"",price:""}]);
+      setModalMods([{label:"",default:false}]);
+      setHasVariants(false);
+      setHasMods(false);
+    }
+    setShowModal(true);
+  }
+
+  function addVariantRow()  { setModalVariants(v => [...v, {name:"",price:""}]); }
+  function removeVariantRow(i) { setModalVariants(v => v.filter((_,idx)=>idx!==i)); }
+  function updateVariant(i, field, val) { setModalVariants(v => v.map((r,idx) => idx===i ? {...r,[field]:val} : r)); }
+
+  function addModRow()      { setModalMods(m => [...m, {label:"",default:false}]); }
+  function removeModRow(i)  { setModalMods(m => m.filter((_,idx)=>idx!==i)); }
+  function updateMod(i, field, val) { setModalMods(m => m.map((r,idx) => idx===i ? {...r,[field]:val} : r)); }
+
+  function toggleAvail(id) {
+    setItems(prev => ({...prev, [activeCat]: prev[activeCat].map(i => i.id===id ? {...i, available:!i.available} : i)}));
+  }
+
+  const inputStyle = {padding:"9px 12px",borderRadius:8,border:"1.5px solid var(--border)",fontSize:13,color:"var(--text)",background:"var(--bg)",outline:"none",width:"100%"};
+
+  return (
+    <div>
+      <div className="topbar">
+        <div>
+          <div style={{fontSize:20,fontWeight:800,letterSpacing:"-0.4px"}}>Gestión de menú</div>
+          <div style={{fontSize:12,color:"var(--text3)"}}>{Object.values(items).flat().length} ítems en total</div>
+        </div>
+        <button onClick={()=>openModal(null)} style={{padding:"9px 18px",background:"var(--orange)",color:"white",borderRadius:10,fontWeight:700,fontSize:13,boxShadow:"0 2px 8px rgba(249,115,22,0.25)"}}>
+          + Agregar ítem
+        </button>
+      </div>
+      <div className="page-content" style={{display:"flex",gap:20,alignItems:"flex-start"}}>
+        {/* Category sidebar */}
+        <div className="card" style={{width:200,flexShrink:0,padding:8}}>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:0.8,padding:"8px 10px 6px"}}>Categorías</div>
+          {MENU_CATS.map(cat => (
+            <div key={cat} onClick={()=>setActiveCat(cat)} style={{
+              padding:"10px 12px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,
+              background:activeCat===cat?"var(--orange-light)":"transparent",
+              color:activeCat===cat?"var(--orange)":"var(--text2)",
+              display:"flex",justifyContent:"space-between",alignItems:"center",
+              transition:"all 0.15s"
+            }}>
+              <span>{cat}</span>
+              <span style={{fontSize:11,fontWeight:700,color:activeCat===cat?"var(--orange)":"var(--text3)"}}>{(items[cat]||[]).length}</span>
+            </div>
+          ))}
+          <div style={{height:1,background:"var(--border)",margin:"8px 0"}}></div>
+          <button style={{width:"100%",padding:"9px 12px",borderRadius:8,background:"transparent",border:"1.5px dashed var(--border)",color:"var(--text3)",fontSize:12,fontWeight:600}}>
+            + Nueva categoría
+          </button>
+        </div>
+
+        {/* Items grid */}
+        <div style={{flex:1}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:12}}>
+            {(items[activeCat]||[]).map(item => (
+              <div key={item.id} className="card" style={{padding:16,opacity:item.available?1:0.6}}>
+                <div style={{width:"100%",height:100,background:"var(--bg3)",borderRadius:8,marginBottom:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"var(--text3)",textAlign:"center"}}>
+                  foto del ítem
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+                  <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{item.name}</div>
+                  <button onClick={()=>openModal(item)} style={{width:28,height:28,borderRadius:7,background:"var(--bg3)",fontSize:14,color:"var(--text3)",display:"flex",alignItems:"center",justifyContent:"center"}}>✏</button>
+                </div>
+                <div style={{fontSize:14,fontWeight:700,color:"var(--orange)",marginBottom:6}}>{fmt(item.price)}</div>
+                {item.variants && (
+                  <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                    {(item.variantList||[]).map(v => (
+                      <span key={v.name} style={{fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:5,background:"var(--orange-light)",color:"var(--orange)"}}>{v.name || "—"}</span>
+                    ))}
+                    {!(item.variantList||[]).length && <span style={{fontSize:11,color:"var(--text3)"}}>Con variantes</span>}
+                  </div>
+                )}
+                {item.hasMods && <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>Con modificaciones</div>}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <span style={{fontSize:12,fontWeight:600,color:item.available?"var(--green)":"var(--text3)"}}>{item.available?"Disponible":"Agotado"}</span>
+                  <div onClick={()=>toggleAvail(item.id)} style={{width:40,height:22,borderRadius:99,cursor:"pointer",background:item.available?"var(--green)":"#DDD",position:"relative",transition:"background 0.2s"}}>
+                    <div style={{position:"absolute",top:3,left:item.available?20:3,width:16,height:16,borderRadius:"50%",background:"var(--card-bg)",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.2)"}}></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div onClick={()=>openModal(null)} className="card" style={{padding:16,border:"2px dashed var(--border)",background:"transparent",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,minHeight:200,cursor:"pointer"}}>
+              <div style={{fontSize:28,color:"var(--text3)"}}>+</div>
+              <div style={{fontSize:13,fontWeight:600,color:"var(--text3)"}}>Agregar ítem</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Item edit modal */}
+      {showModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:20}} onClick={()=>setShowModal(false)}>
+          <div style={{background:"var(--card-bg)",borderRadius:20,width:"100%",maxWidth:520,padding:28,boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto"}} className="scrollable" onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>{editItem?"Editar ítem":"Nuevo ítem"}</div>
+              <button onClick={()=>setShowModal(false)} style={{width:32,height:32,borderRadius:8,background:"var(--bg3)",fontSize:18,color:"var(--text2)"}}>×</button>
+            </div>
+
+            {/* Basic fields */}
+            {[
+              {label:"Nombre del ítem", ph:"Ej: Classic Smash", type:"text"},
+              {label:"Descripción corta", ph:"Ej: Doble medallón, cheddar, pickles…", type:"text"},
+              {label:"Precio base", ph:"$0", type:"number"},
+            ].map(f => (
+              <div key={f.label} style={{marginBottom:14}}>
+                <label style={{fontSize:12,fontWeight:700,color:"var(--text2)",display:"block",marginBottom:5}}>{f.label}</label>
+                <input defaultValue={editItem ? editItem[f.label.toLowerCase()] : ""} placeholder={f.ph} type={f.type} style={{...inputStyle}}/>
+              </div>
+            ))}
+
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,fontWeight:700,color:"var(--text2)",display:"block",marginBottom:5}}>Categoría</label>
+              <select style={{...inputStyle}}>
+                {MENU_CATS.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+
+            {/* Foto */}
+            <div style={{marginBottom:20}}>
+              <label style={{fontSize:12,fontWeight:700,color:"var(--text2)",display:"block",marginBottom:5}}>Foto</label>
+              <div style={{width:"100%",height:80,background:"var(--bg3)",borderRadius:10,border:"2px dashed var(--border)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                <span style={{fontSize:12,color:"var(--text3)",fontWeight:600}}>+ Subir imagen</span>
+              </div>
+            </div>
+
+            {/* ── VARIANTES ── */}
+            <div style={{borderTop:"1px solid var(--border)",paddingTop:18,marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:800,color:"var(--text)"}}>Variantes de tamaño</div>
+                  <div style={{fontSize:11,color:"var(--text3)"}}>Ej: Simple / Doble / Triple con precios distintos</div>
+                </div>
+                <div onClick={()=>setHasVariants(v=>!v)} style={{width:40,height:22,borderRadius:99,cursor:"pointer",background:hasVariants?"var(--orange)":"#DDD",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                  <div style={{position:"absolute",top:3,left:hasVariants?20:3,width:16,height:16,borderRadius:"50%",background:"white",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}></div>
+                </div>
+              </div>
+
+              {hasVariants && (
+                <div>
+                  {/* Column headers */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 130px 32px",gap:8,marginBottom:6}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:0.5}}>Nombre</span>
+                    <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:0.5}}>Precio</span>
+                    <span></span>
+                  </div>
+                  {modalVariants.map((v, i) => (
+                    <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 130px 32px",gap:8,marginBottom:8,alignItems:"center"}}>
+                      <input
+                        value={v.name}
+                        onChange={e => updateVariant(i,"name",e.target.value)}
+                        placeholder="Ej: Doble"
+                        style={{...inputStyle}}
+                      />
+                      <input
+                        value={v.price}
+                        onChange={e => updateVariant(i,"price",e.target.value)}
+                        placeholder="$0"
+                        type="number"
+                        style={{...inputStyle}}
+                      />
+                      <button onClick={() => removeVariantRow(i)} style={{width:32,height:32,borderRadius:8,background:"rgba(239,68,68,0.1)",color:"#EF4444",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>×</button>
+                    </div>
+                  ))}
+                  <button onClick={addVariantRow} style={{fontSize:12,fontWeight:700,color:"var(--orange)",background:"var(--orange-light)",padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",marginTop:2}}>
+                    + Agregar variante
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ── MODIFICACIONES ── */}
+            <div style={{borderTop:"1px solid var(--border)",paddingTop:18,marginBottom:24}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:800,color:"var(--text)"}}>Modificaciones</div>
+                  <div style={{fontSize:11,color:"var(--text3)"}}>Opciones que el cliente puede marcar o desmarcar</div>
+                </div>
+                <div onClick={()=>setHasMods(m=>!m)} style={{width:40,height:22,borderRadius:99,cursor:"pointer",background:hasMods?"var(--orange)":"#DDD",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                  <div style={{position:"absolute",top:3,left:hasMods?20:3,width:16,height:16,borderRadius:"50%",background:"white",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}></div>
+                </div>
+              </div>
+
+              {hasMods && (
+                <div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 100px 32px",gap:8,marginBottom:6}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:0.5}}>Opción</span>
+                    <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:0.5}}>Por defecto</span>
+                    <span></span>
+                  </div>
+                  {modalMods.map((m, i) => (
+                    <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 100px 32px",gap:8,marginBottom:8,alignItems:"center"}}>
+                      <input
+                        value={m.label}
+                        onChange={e => updateMod(i,"label",e.target.value)}
+                        placeholder="Ej: Con lechuga"
+                        style={{...inputStyle}}
+                      />
+                      <div style={{display:"flex",justifyContent:"center"}}>
+                        <div onClick={()=>updateMod(i,"default",!m.default)} style={{width:40,height:22,borderRadius:99,cursor:"pointer",background:m.default?"var(--green)":"#DDD",position:"relative",transition:"background 0.2s"}}>
+                          <div style={{position:"absolute",top:3,left:m.default?20:3,width:16,height:16,borderRadius:"50%",background:"white",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}></div>
+                        </div>
+                      </div>
+                      <button onClick={()=>removeModRow(i)} style={{width:32,height:32,borderRadius:8,background:"rgba(239,68,68,0.1)",color:"#EF4444",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                    </div>
+                  ))}
+                  <button onClick={addModRow} style={{fontSize:12,fontWeight:700,color:"var(--orange)",background:"var(--orange-light)",padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",marginTop:2}}>
+                    + Agregar opción
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div style={{display:"flex",gap:10}}>
+              <button style={{flex:2,padding:"13px",background:"var(--orange)",color:"white",borderRadius:10,fontWeight:700,fontSize:14,boxShadow:"0 2px 8px rgba(249,115,22,0.2)"}}>
+                {editItem?"Guardar cambios":"Crear ítem"}
+              </button>
+              <button onClick={()=>setShowModal(false)} style={{flex:1,padding:"13px",background:"var(--bg3)",color:"var(--text2)",borderRadius:10,fontWeight:600,fontSize:13}}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── HORARIOS ──────────────────────────────────────────────
+const DAYS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+const DEFAULT_HRS = [
+  {open:"12:00",close:"22:00",active:true},
+  {open:"12:00",close:"22:00",active:true},
+  {open:"12:00",close:"22:00",active:true},
+  {open:"12:00",close:"22:00",active:true},
+  {open:"12:00",close:"23:00",active:true},
+  {open:"12:00",close:"23:00",active:true},
+  {open:"13:00",close:"21:00",active:true},
+];
+
+function HoursManager() {
+  const [hours, setHours] = useState(DEFAULT_HRS);
+  const [pausing, setPausing] = useState(false);
+  const [reason, setReason] = useState("");
+
+  function toggleDay(i) { setHours(prev => prev.map((h,idx) => idx===i?{...h,active:!h.active}:h)); }
+  function setHour(i, field, val) { setHours(prev => prev.map((h,idx) => idx===i?{...h,[field]:val}:h)); }
+
+  return (
+    <div>
+      <div className="topbar">
+        <div>
+          <div style={{fontSize:20,fontWeight:800,letterSpacing:"-0.4px"}}>Gestión de horarios</div>
+          <div style={{fontSize:12,color:"var(--text3)"}}>Configurá cuándo está abierto el truck</div>
+        </div>
+        <button onClick={()=>setPausing(true)} style={{padding:"9px 18px",background:"#EF4444",color:"white",borderRadius:10,fontWeight:700,fontSize:13,boxShadow:"0 2px 8px rgba(239,68,68,0.25)"}}>
+          ⏸ Pausar truck ahora
+        </button>
+      </div>
+
+      <div className="page-content">
+        <div className="card" style={{overflow:"hidden",marginBottom:20}}>
+          <table>
+            <thead><tr>
+              <th style={{width:120}}>Día</th>
+              <th>Abierto</th>
+              <th>Apertura</th>
+              <th>Cierre</th>
+              <th>Estado</th>
+            </tr></thead>
+            <tbody>
+              {DAYS.map((day, i) => (
+                <tr key={day}>
+                  <td style={{fontWeight:700,color:"var(--text)"}}>{day}</td>
+                  <td>
+                    <div onClick={()=>toggleDay(i)} style={{width:38,height:20,borderRadius:99,cursor:"pointer",background:hours[i].active?"var(--green)":"#DDD",position:"relative",transition:"background 0.2s"}}>
+                      <div style={{position:"absolute",top:2,left:hours[i].active?20:2,width:16,height:16,borderRadius:"50%",background:"var(--card-bg)",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.2)"}}></div>
+                    </div>
+                  </td>
+                  <td>
+                    <input type="time" value={hours[i].open} onChange={e=>setHour(i,"open",e.target.value)} disabled={!hours[i].active}
+                      style={{padding:"6px 10px",borderRadius:8,border:"1.5px solid var(--border)",fontSize:13,color:hours[i].active?"var(--text)":"var(--text3)",background:hours[i].active?"white":"var(--bg3)",outline:"none"}}/>
+                  </td>
+                  <td>
+                    <input type="time" value={hours[i].close} onChange={e=>setHour(i,"close",e.target.value)} disabled={!hours[i].active}
+                      style={{padding:"6px 10px",borderRadius:8,border:"1.5px solid var(--border)",fontSize:13,color:hours[i].active?"var(--text)":"var(--text3)",background:hours[i].active?"white":"var(--bg3)",outline:"none"}}/>
+                  </td>
+                  <td>
+                    <span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:6,background:hours[i].active?"rgba(34,197,94,0.1)":"var(--bg3)",color:hours[i].active?"var(--green)":"var(--text3)"}}>
+                      {hours[i].active ? "Abierto" : "Cerrado"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button style={{padding:"12px 24px",background:"var(--orange)",color:"white",borderRadius:10,fontWeight:700,fontSize:14,boxShadow:"0 2px 8px rgba(249,115,22,0.25)"}}>
+          Guardar cambios
+        </button>
+      </div>
+
+      {pausing && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:20}} onClick={()=>setPausing(false)}>
+          <div style={{background:"var(--card-bg)",borderRadius:20,width:"100%",maxWidth:400,padding:28}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:48,textAlign:"center",marginBottom:12}}>⏸</div>
+            <div style={{fontSize:18,fontWeight:800,textAlign:"center",marginBottom:6}}>¿Pausar el truck?</div>
+            <div style={{fontSize:13,color:"var(--text3)",textAlign:"center",marginBottom:20}}>Los clientes verán que están cerrados hasta que lo retomes.</div>
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:12,fontWeight:700,color:"var(--text2)",display:"block",marginBottom:6}}>Motivo (opcional)</label>
+              <input value={reason} onChange={e=>setReason(e.target.value)} placeholder="Ej: Sin gas, lluvia…" style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid var(--border)",fontSize:14,outline:"none"}}/>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{flex:2,padding:"13px",background:"#EF4444",color:"white",borderRadius:10,fontWeight:700,fontSize:14}}>Pausar ahora</button>
+              <button onClick={()=>setPausing(false)} style={{flex:1,padding:"13px",background:"var(--bg3)",color:"var(--text2)",borderRadius:10,fontWeight:600}}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── USUARIOS Y ROLES ───────────────────────────────────────
+const USERS = [
+  {id:1, name:"Carlos Rodríguez", email:"admin@foodtag.ar",    role:"Admin",   active:true,  locked:true},
+  {id:2, name:"María González",   email:"cocina@foodtag.ar",   role:"Cocina",  active:true,  locked:false},
+  {id:3, name:"Juan Pérez",       email:"cajero@foodtag.ar",   role:"Cajero",  active:true,  locked:false},
+  {id:4, name:"Ana Martínez",     email:"ana@foodtag.ar",      role:"Cocina",  active:false, locked:false},
+];
+
+const ROLES_PERMS = {
+  "Menú":    ["Ver menú","Editar ítems","Cambiar disponibilidad","Gestionar categorías"],
+  "Pedidos": ["Ver pedidos","Avanzar estados","Cancelar pedidos","Ver historial"],
+  "Horarios":["Ver horarios","Editar horarios","Pausar truck"],
+  "Usuarios":["Ver usuarios","Crear usuarios","Editar roles"],
+  "Dashboard":["Ver métricas","Exportar reportes"],
+};
+
+const DEFAULT_PERMS = {
+  Admin:  {all: true},
+  Cajero: {"Ver menú":true,"Ver pedidos":true,"Avanzar estados":true,"Cancelar pedidos":true,"Ver historial":true},
+  Cocina: {"Ver menú":true,"Ver pedidos":true,"Avanzar estados":true,"Cambiar disponibilidad":true},
+};
+
+function UsersManager() {
+  const [activeTab, setActiveTab] = useState("users");
+
+  return (
+    <div>
+      <div className="topbar">
+        <div>
+          <div style={{fontSize:20,fontWeight:800,letterSpacing:"-0.4px"}}>Usuarios y roles</div>
+        </div>
+        {activeTab==="users" && <button style={{padding:"9px 18px",background:"var(--orange)",color:"white",borderRadius:10,fontWeight:700,fontSize:13}}>+ Nuevo usuario</button>}
+      </div>
+      <div className="page-content">
+        <div style={{display:"flex",gap:4,marginBottom:20,background:"var(--bg3)",borderRadius:10,padding:4,width:"fit-content"}}>
+          {["users","roles"].map(t => (
+            <button key={t} onClick={()=>setActiveTab(t)} style={{padding:"8px 18px",borderRadius:8,fontSize:13,fontWeight:700,background:activeTab===t?"white":"transparent",color:activeTab===t?"var(--text)":"var(--text3)",boxShadow:activeTab===t?"0 1px 4px rgba(0,0,0,0.1)":"none",transition:"all 0.15s"}}>
+              {t==="users"?"Usuarios":"Roles y permisos"}
+            </button>
+          ))}
+        </div>
+
+        {activeTab==="users" && (
+          <div className="card" style={{overflow:"hidden"}}>
+            <table>
+              <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <tbody>
+                {USERS.map(u => (
+                  <tr key={u.id}>
+                    <td style={{fontWeight:700,color:"var(--text)",display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:32,height:32,borderRadius:8,background:`hsl(${u.id*60},50%,85%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:`hsl(${u.id*60},50%,35%)`,flexShrink:0}}>
+                        {u.name.split(" ").map(n=>n[0]).join("").slice(0,2)}
+                      </div>
+                      {u.name}
+                    </td>
+                    <td style={{fontFamily:"DM Mono, monospace",fontSize:12}}>{u.email}</td>
+                    <td>
+                      <span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:6,background:"var(--orange-light)",color:"var(--orange)"}}>{u.role}</span>
+                    </td>
+                    <td>
+                      <span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:6,background:u.active?"rgba(34,197,94,0.1)":"var(--bg3)",color:u.active?"var(--green)":"var(--text3)"}}>
+                        {u.active?"Activo":"Inactivo"}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{display:"flex",gap:6}}>
+                        <button style={{padding:"5px 12px",borderRadius:7,background:"var(--bg3)",fontSize:12,fontWeight:600,color:"var(--text2)",border:"none"}}>Editar</button>
+                        {!u.locked && <button style={{padding:"5px 12px",borderRadius:7,background:"rgba(239,68,68,0.08)",fontSize:12,fontWeight:600,color:"#EF4444",border:"none"}}>Desactivar</button>}
+                        {u.locked && <span style={{fontSize:11,color:"var(--text3)",padding:"5px 6px"}}>🔒 Protegido</span>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab==="roles" && (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
+            {["Admin","Cajero","Cocina"].map(role => (
+              <div key={role} className="card" style={{padding:20}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                  <div>
+                    <div style={{fontSize:16,fontWeight:800}}>{role}</div>
+                    <div style={{fontSize:11,color:"var(--text3)"}}>🔒 Rol protegido</div>
+                  </div>
+                  <span style={{padding:"4px 10px",borderRadius:8,background:"var(--orange-light)",color:"var(--orange)",fontSize:11,fontWeight:700}}>{role}</span>
+                </div>
+                {Object.entries(ROLES_PERMS).map(([cat, perms]) => (
+                  <div key={cat} style={{marginBottom:12}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>{cat}</div>
+                    {perms.map(p => {
+                      const has = role==="Admin" || !!DEFAULT_PERMS[role]?.[p];
+                      return (
+                        <label key={p} style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,cursor:"pointer",opacity:role==="Admin"?0.7:1}}>
+                          <input type="checkbox" defaultChecked={has} disabled={role==="Admin"} style={{accentColor:"var(--orange)",width:14,height:14}}/>
+                          <span style={{fontSize:12,color:has?"var(--text)":"var(--text3)",fontWeight:has?500:400}}>{p}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── APP ────────────────────────────────────────────────────
+function App() {
+  const [page, setPage] = useState(() => localStorage.getItem("ft_admin_page") || "dashboard");
+  const [dark, setDark] = useState(() => localStorage.getItem("ft_admin_dark") === "1");
+  const [showTweaks, setShowTweaks] = useState(false);
+
+  useEffect(() => { localStorage.setItem("ft_admin_page", page); }, [page]);
+  useEffect(() => {
+    localStorage.setItem("ft_admin_dark", dark ? "1" : "0");
+    document.body.classList.toggle("dark", dark);
+  }, [dark]);
+  useEffect(() => {
+    window.addEventListener("message", e => {
+      if (e.data?.type === "__activate_edit_mode") setShowTweaks(true);
+      if (e.data?.type === "__deactivate_edit_mode") setShowTweaks(false);
+    });
+    window.parent.postMessage({type:"__edit_mode_available"}, "*");
+  }, []);
+
+  const devPages = [
+    {id:"dashboard",label:"Dashboard"},
+    {id:"menu",label:"Menú"},
+    {id:"hours",label:"Horarios"},
+    {id:"users",label:"Usuarios"},
+  ];
+
+  return (
+    <>
+      <Sidebar active={page} setActive={setPage} dark={dark} setDark={setDark}/>
+      <div className="main">
+        {page==="dashboard" && <Dashboard/>}
+        {page==="menu"      && <MenuManager/>}
+        {page==="hours"     && <HoursManager/>}
+        {page==="users"     && <UsersManager/>}
+      </div>
+
+      <div className="dev-nav">
+        {devPages.map(p => <button key={p.id} className={page===p.id?"active":""} onClick={()=>setPage(p.id)}>{p.label}</button>)}
+      </div>
+
+      <div className={`tweaks-panel ${showTweaks?"open":""}`}>
+        <h3>Tweaks</h3>
+        <div className="tweak-row">
+          <label>Gráfico de ventas</label>
+          <select><option>Barras</option><option>Línea</option></select>
+        </div>
+        <div className="tweak-row">
+          <label>Densidad de tabla</label>
+          <select><option>Normal</option><option>Compacta</option></select>
+        </div>
+      </div>
+
+      <template id="__bundler_thumbnail" data-bg-color="#1A1A1A">
+        <svg viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg">
+          <rect width="1440" height="900" fill="#FAFAFA"/>
+          <rect width="220" height="900" fill="#1A1A1A"/>
+          <rect x="240" y="80" width="180" height="80" rx="10" fill="#F97316" opacity=".15"/>
+          <rect x="240" y="80" width="180" height="5" rx="3" fill="#F97316"/>
+          <rect x="440" y="80" width="180" height="80" rx="10" fill="#22C55E" opacity=".15"/>
+          <rect x="440" y="80" width="180" height="5" rx="3" fill="#22C55E"/>
+          <rect x="640" y="80" width="180" height="80" rx="10" fill="#EAB308" opacity=".15"/>
+          <rect x="640" y="80" width="180" height="5" rx="3" fill="#EAB308"/>
+        </svg>
+      </template>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

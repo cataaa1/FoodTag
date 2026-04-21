@@ -21,6 +21,21 @@ export const menuVariantRowSchema = z.object({
   position: z.number().int().nonnegative(),
 });
 
+export const menuModifierInputSchema = z.object({
+  id: z.string().uuid().optional(),
+  label: z.string().trim().min(2).max(80),
+  defaultChecked: z.boolean().default(true),
+  position: z.number().int().min(0),
+});
+
+export const menuVariantInputSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().trim().min(1).max(60),
+  priceCents: z.number().int().min(0).max(999_999),
+  available: z.boolean().default(true),
+  position: z.number().int().min(0),
+});
+
 export const menuItemRowSchema = z.object({
   id: z.string().uuid(),
   category_id: z.string().uuid(),
@@ -55,6 +70,8 @@ export const menuItemCreateSchema = z.object({
   available: z.boolean().default(true),
   hasVariants: z.boolean().default(false),
   position: z.number().int().min(0),
+  variants: z.array(menuVariantInputSchema).max(20).default([]),
+  modifiers: z.array(menuModifierInputSchema).max(20).default([]),
 });
 
 export const menuItemUpdateSchema = menuItemCreateSchema.partial().refine(
@@ -82,3 +99,32 @@ export const idParamSchema = z.object({
 export const menuQuerySchema = z.object({
   menuItemId: z.string().uuid().optional(),
 });
+
+export const roleCreateSchema = z.object({
+  name: z.string().trim().min(2).max(60),
+  permissions: z.array(permissionSchema).default([]),
+});
+
+export const roleUpdateSchema = roleCreateSchema.partial().refine(
+  (data) => Object.keys(data).length > 0,
+  "Tenés que enviar al menos un campo",
+);
+
+export const staffUserCreateSchema = z.object({
+  email: z.string().trim().email(),
+  fullName: z.string().trim().min(2).max(80),
+  password: z.string().min(8).max(120),
+  roleId: z.string().uuid(),
+  active: z.boolean().default(true),
+});
+
+export const staffUserUpdateSchema = staffUserCreateSchema
+  .omit({ password: true })
+  .partial()
+  .extend({
+    password: z.string().min(8).max(120).optional(),
+  })
+  .refine(
+    (data) => Object.keys(data).length > 0,
+    "Tenés que enviar al menos un campo",
+  );

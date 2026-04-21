@@ -1,16 +1,10 @@
 "use client";
 
-import { LogIn } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-
 export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("admin@foodtag.ar");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -24,9 +18,7 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
     try {
       const response = await fetch("/api/staff/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
@@ -41,9 +33,7 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
       router.refresh();
     } catch (submitError) {
       setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "No se pudo iniciar sesión",
+        submitError instanceof Error ? submitError.message : "No se pudo iniciar sesión",
       );
     } finally {
       setLoading(false);
@@ -51,56 +41,64 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6 py-12">
-      <Card className="surface-glow w-full max-w-md rounded-[28px] border-white/70 bg-card/95">
-        <CardHeader className="space-y-4 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
-            <LogIn className="size-6" />
+    <main className="flex min-h-screen items-center justify-center bg-[#0f0f0f] px-6 py-12 text-[#f5f5f5]">
+      <div className="w-full max-w-[380px]">
+        <header className="mb-9 text-center">
+          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-[18px] bg-[#f97316] text-3xl shadow-[0_4px_24px_rgba(249,115,22,0.30)]">
+            🚚
           </div>
-          <div className="space-y-1">
-            <CardTitle className="text-3xl font-extrabold tracking-tight">
-              Ingreso del staff
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Accedé al panel interno de FoodTag con usuario local.
+          <h1 className="text-2xl font-black tracking-[-0.5px]">FoodTag Staff</h1>
+          <p className="mt-1 text-[13px] text-[#606060]">Panel de operaciones</p>
+        </header>
+
+        <form className="flex flex-col gap-3.5" onSubmit={handleSubmit}>
+          <label>
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-[0.5px] text-[#a0a0a0]">
+              Email
+            </span>
+            <input
+              className="w-full rounded-[10px] border border-[#2e2e2e] bg-[#242424] px-4 py-3.5 text-[15px] font-medium text-[#f5f5f5] outline-none transition focus:border-[#f97316]"
+              autoComplete="email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-[0.5px] text-[#a0a0a0]">
+              Contraseña
+            </span>
+            <input
+              className="w-full rounded-[10px] border border-[#2e2e2e] bg-[#242424] px-4 py-3.5 text-[15px] font-medium text-[#f5f5f5] outline-none transition focus:border-[#f97316]"
+              autoComplete="current-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </label>
+
+          {error ? (
+            <p className="rounded-xl border border-[#ef4444]/25 bg-[#ef4444]/15 px-4 py-3 text-sm font-semibold text-[#ef4444]">
+              {error}
             </p>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-5" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="admin@foodtag.ar"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="••••••••"
-                required
-              />
-            </div>
-            {error ? (
-              <div className="rounded-2xl border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {error}
-              </div>
-            ) : null}
-            <Button className="w-full" disabled={loading} type="submit">
-              {loading ? "Ingresando..." : "Entrar al panel"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+          ) : null}
+
+          <button
+            className="mt-2 rounded-xl bg-[#f97316] px-5 py-3.5 text-[15px] font-black text-white shadow-[0_4px_16px_rgba(249,115,22,0.30)] transition active:scale-[0.98] disabled:opacity-50"
+            disabled={loading}
+            type="submit"
+          >
+            {loading ? "Entrando..." : "Entrar"}
+          </button>
+
+          <p className="pt-2 text-center text-xs text-[#606060]">
+            Credencial local de desarrollo: admin@foodtag.ar
+          </p>
+        </form>
+      </div>
     </main>
   );
 }

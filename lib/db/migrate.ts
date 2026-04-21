@@ -1,14 +1,17 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { getDb } from "@/lib/db/client";
 
 export function migrateDb() {
   const db = getDb();
-  const migration = readFileSync(
-    path.join(process.cwd(), "db", "migrations", "001_initial_sqlite.sql"),
-    "utf8",
-  );
+  const migrationsPath = path.join(process.cwd(), "db", "migrations");
+  const migrationFiles = readdirSync(migrationsPath)
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
 
-  db.exec(migration);
+  migrationFiles.forEach((file) => {
+    const migration = readFileSync(path.join(migrationsPath, file), "utf8");
+    db.exec(migration);
+  });
 }

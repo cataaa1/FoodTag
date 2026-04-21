@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>FoodTag — Cliente</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --orange: #F97316;
+    --orange-light: #FED7AA;
+    --orange-dark: #C2410C;
+    --red: #EF4444;
+    --green: #22C55E;
+    --yellow: #EAB308;
+    --bg: #FFF8F1;
+    --bg2: #FFF1E6;
+    --card: #FFFFFF;
+    --text: #1C1009;
+    --text2: #6B4E35;
+    --text3: #9A7560;
+    --border: #F0DDD0;
+    --radius: 14px;
+    --radius-sm: 8px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.14);
+  }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #E8E0D8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .phone-shell {
+    width: 375px;
+    min-height: 812px;
+    background: var(--bg);
+    border-radius: 40px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,0,0,0.1);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+  .scrollable { overflow-y: auto; flex: 1; }
+  .scrollable::-webkit-scrollbar { width: 0; }
+  button { cursor: pointer; font-family: 'DM Sans', sans-serif; border: none; outline: none; }
+  input { font-family: 'DM Sans', sans-serif; }
+  .btn-primary {
+    background: var(--orange);
+    color: white;
+    font-size: 17px;
+    font-weight: 700;
+    padding: 16px 24px;
+    border-radius: var(--radius);
+    width: 100%;
+    letter-spacing: -0.2px;
+    transition: transform 0.1s, background 0.15s;
+    box-shadow: 0 4px 16px rgba(249,115,22,0.35);
+  }
+  .btn-primary:active { transform: scale(0.98); background: var(--orange-dark); }
+  .btn-secondary {
+    background: transparent;
+    color: var(--text2);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* ===== SCREEN NAV (dev only) ===== */
+  .dev-nav {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    background: rgba(0,0,0,0.85);
+    padding: 8px 12px;
+    border-radius: 999px;
+    z-index: 1000;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 420px;
+  }
+  .dev-nav button {
+    background: rgba(255,255,255,0.1);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.3px;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .dev-nav button:hover { background: rgba(255,255,255,0.22); }
+  .dev-nav button.active { background: var(--orange); }
+
+  /* Tweaks panel */
+  .tweaks-panel {
+    position: fixed;
+    bottom: 70px;
+    right: 20px;
+    background: white;
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    padding: 16px;
+    width: 220px;
+    z-index: 999;
+    display: none;
+  }
+  .tweaks-panel.open { display: block; }
+  .tweaks-panel h3 { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: #333; }
+  .tweak-row { margin-bottom: 10px; }
+  .tweak-row label { font-size: 11px; font-weight: 600; color: #555; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .tweak-row input[type=color] { width: 100%; height: 30px; border-radius: 6px; border: 1px solid #eee; cursor: pointer; }
+  .tweak-row select { width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #eee; font-size: 12px; font-family: 'DM Sans'; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "primaryColor": "#F97316",
+  "bgColor": "#FFF8F1",
+  "ticketFont": "DM Mono",
+  "roundness": "14"
+}/*EDITMODE-END*/;
+
+// ============================================================
+//  DATA
+// ============================================================
+const MENU_DATA = {
+  categories: ["Hamburguesas","Papas","Bebidas","Postres"],
+  items: [
+    { id:1, cat:"Hamburguesas", name:"Classic Smash", desc:"Doble medallón, cheddar fundido, pickles, salsa secreta", price:2800, img:"🍔",
+      variants:["Simple","Doble","Triple"], prices:[2800,3600,4200],
+      mods:[
+        {id:"lettuce", label:"Con lechuga", default:true},
+        {id:"pickles", label:"Con pickles", default:true},
+        {id:"sauce",   label:"Con salsa secreta", default:true},
+        {id:"onion",   label:"Con cebolla caramelizada", default:false},
+      ]
+    },
+    { id:2, cat:"Hamburguesas", name:"Crispy Chicken", desc:"Pollo rebozado, coleslaw, mayo ahumada", price:2600, img:"🍗",
+      variants:null,
+      mods:[
+        {id:"mayo",    label:"Con mayo ahumada", default:true},
+        {id:"coleslaw",label:"Con coleslaw", default:true},
+        {id:"jalap",   label:"Con jalapeños", default:false},
+      ]
+    },
+    { id:3, cat:"Hamburguesas", name:"BBQ Bacon", desc:"Bacon crocante, anillos de cebolla, salsa BBQ", price:3200, img:"🥓", variants:["Simple","Doble"], prices:[3200,4000], soldOut:true },
+    { id:4, cat:"Papas",       name:"Papas Fritas",    desc:"Crocantes, con sal gruesa", price:1200, img:"🍟", variants:null },
+    { id:5, cat:"Papas",       name:"Papas Cheddar",   desc:"Con cheddar fundido y cebolla de verdeo", price:1600, img:"🧀", variants:null,
+      mods:[
+        {id:"cheddar", label:"Con cheddar extra", default:false},
+        {id:"verdeo",  label:"Con cebolla de verdeo", default:true},
+      ]
+    },
+    { id:6, cat:"Bebidas",     name:"Gaseosa",         desc:"Coca, Sprite o Fanta — 500ml", price:800, img:"🥤", variants:null,
+      mods:[
+        {id:"ice",     label:"Con hielo", default:true},
+        {id:"lemon",   label:"Con limón", default:false},
+      ]
+    },
+    { id:7, cat:"Bebidas",     name:"Agua con gas",    desc:"500ml, bien fría", price:600, img:"💧", variants:null,
+      mods:[
+        {id:"ice",     label:"Con hielo", default:true},
+      ]
+    },
+    { id:8, cat:"Postres",     name:"Brownie",         desc:"Tibio, con helado de vainilla", price:1400, img:"🍫", variants:null, soldOut:true },
+    { id:9, cat:"Postres",     name:"Alfajor artesanal",desc:"Triple de maicena, bañado en chocolate", price:900, img:"🍪", variants:null },
+  ]
+};
+
+function fmt(n) { return "$" + n.toLocaleString("es-AR"); }
+
+// ============================================================
+//  COMPONENTS
+// ============================================================
+
+function StatusBar() {
+  return (
+    <div style={{height:44,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 20px",flexShrink:0}}>
+      <span style={{fontSize:15,fontWeight:700}}>9:41</span>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        <svg width="17" height="12" viewBox="0 0 17 12"><rect x="0" y="3" width="3" height="9" rx="1" fill="currentColor" opacity=".4"/><rect x="4.5" y="2" width="3" height="10" rx="1" fill="currentColor" opacity=".6"/><rect x="9" y="0" width="3" height="12" rx="1" fill="currentColor"/><rect x="13.5" y="0" width="3" height="12" rx="1" fill="currentColor" opacity=".3"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 2.5C10.2 2.5 12.2 3.4 13.6 4.9L15 3.5C13.2 1.6 10.7.5 8 .5 5.3.5 2.8 1.6 1 3.5l1.4 1.4C3.8 3.4 5.8 2.5 8 2.5z" fill="currentColor" opacity=".4"/><path d="M8 5.5c1.4 0 2.7.6 3.6 1.5L13 5.6C11.7 4.2 9.9 3.5 8 3.5s-3.7.7-5 2.1l1.4 1.4C5.3 6.1 6.6 5.5 8 5.5z" fill="currentColor" opacity=".7"/><circle cx="8" cy="10" r="1.5" fill="currentColor"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0" y="1" width="22" height="10" rx="3" stroke="currentColor" strokeWidth="1.2" fill="none"/><rect x="1.5" y="2.5" width="17" height="7" rx="2" fill="currentColor"/><path d="M23 4.5v3c.8-.4 1.3-1 1.3-1.5S23.8 4.9 23 4.5z" fill="currentColor" opacity=".4"/></svg>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+//  SCREEN 1 — LANDING
+// ============================================================
+function LandingScreen({ onNext }) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [errors, setErrors] = useState({});
+
+  function submit(e) {
+    e.preventDefault();
+    const errs = {};
+    if (!name.trim()) errs.name = "Ingresá tu nombre";
+    if (!/^\d{10,}$/.test(phone.replace(/\D/g,""))) errs.phone = "Ingresá un número válido";
+    setErrors(errs);
+    if (!Object.keys(errs).length) onNext({ name: name.trim(), phone });
+  }
+
+  const inputStyle = (field) => ({
+    width:"100%", padding:"14px 16px", fontSize:16, fontWeight:500,
+    borderRadius:12, border:`2px solid ${errors[field] ? "#EF4444" : "#F0DDD0"}`,
+    background:"#FFFBF7", color:"#1C1009", outline:"none",
+    transition:"border 0.2s"
+  });
+
+  return (
+    <div className="screen" style={{background:"var(--bg)"}}>
+      <StatusBar/>
+      {/* Hero image */}
+      <div style={{position:"relative",height:200,flexShrink:0,overflow:"hidden",background:"#1C1009"}}>
+        {/* Placeholder — swap src for real photo */}
+        <div style={{
+          position:"absolute",inset:0,
+          background:"linear-gradient(135deg,#C2410C 0%,#F97316 45%,#FED7AA 100%)",
+          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,
+        }}>
+          <span style={{fontSize:52,filter:"drop-shadow(0 4px 12px rgba(0,0,0,0.3))"}}>🚚</span>
+          <span style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.6)",letterSpacing:2,textTransform:"uppercase"}}>Foto del truck</span>
+        </div>
+        {/* Gradient overlay bottom */}
+        <div style={{position:"absolute",bottom:0,left:0,right:0,height:80,background:"linear-gradient(to top,var(--bg),transparent)"}}></div>
+        {/* Name overlay */}
+        <div style={{position:"absolute",bottom:12,left:0,right:0,textAlign:"center"}}>
+          <div style={{fontSize:22,fontWeight:900,color:"var(--text)",letterSpacing:"-0.5px",textShadow:"0 1px 0 rgba(255,255,255,0.5)"}}>El Smash del Barrio</div>
+          <div style={{fontSize:12,color:"var(--text3)",fontWeight:500}}>Food Truck · Av. Corrientes 1500</div>
+        </div>
+      </div>
+
+      <div className="scrollable" style={{padding:"24px 24px 100px"}}>
+        {/* Welcome card */}
+        <div style={{background:"#FFF1E6",borderRadius:16,padding:"16px 18px",marginBottom:24,display:"flex",gap:12,alignItems:"flex-start"}}>
+          <span style={{fontSize:22,flexShrink:0}}>👋</span>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:"var(--text)",marginBottom:3}}>¡Hola! Pedí desde acá</div>
+            <div style={{fontSize:13,color:"var(--text2)",lineHeight:1.5}}>Te vamos a avisar <strong>en esta pantalla</strong> cuando tu pedido esté listo. No hace falta descargar nada.</div>
+          </div>
+        </div>
+
+        <form onSubmit={submit}>
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:13,fontWeight:700,color:"var(--text2)",display:"block",marginBottom:6}}>¿Cómo te llamás?</label>
+            <input
+              style={inputStyle("name")}
+              placeholder="Tu nombre"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoComplete="given-name"
+            />
+            {errors.name && <div style={{fontSize:12,color:"#EF4444",marginTop:4,fontWeight:500}}>{errors.name}</div>}
+          </div>
+
+          <div style={{marginBottom:24}}>
+            <label style={{fontSize:13,fontWeight:700,color:"var(--text2)",display:"block",marginBottom:6}}>¿Tu número de WhatsApp?</label>
+            <input
+              style={inputStyle("phone")}
+              placeholder="Ej: 11 2345-6789"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel"
+            />
+            {errors.phone && <div style={{fontSize:12,color:"#EF4444",marginTop:4,fontWeight:500}}>{errors.phone}</div>}
+            <div style={{fontSize:12,color:"var(--text3)",marginTop:5}}>Solo para avisarte cuando esté tu pedido 🔔</div>
+          </div>
+
+          <button type="submit" className="btn-primary" style={{marginBottom:12}}>Ver menú →</button>
+        </form>
+      </div>
+
+      {/* Footer */}
+      <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"12px 24px 20px",background:"linear-gradient(to top,var(--bg) 80%,transparent)",textAlign:"center"}}>
+        <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"#F0DDD0",borderRadius:999,padding:"6px 14px"}}>
+          <span style={{width:8,height:8,background:"#22C55E",borderRadius:"50%",display:"inline-block"}}></span>
+          <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>Abierto hasta las 23:00</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+//  SCREEN 2 — MENÚ
+// ============================================================
+function MenuScreen({ customer, cart, setCart, onCheckout }) {
+  const [activeCat, setActiveCat] = useState("Hamburguesas");
+  const [configItem, setConfigItem] = useState(null);   // item being configured
+  const [selectedVariant, setSelectedVariant] = useState(null); // idx or null
+  const [selectedMods, setSelectedMods] = useState({});  // {modId: bool}
+  const catRef = useRef(null);
+
+  const cartCount = cart.reduce((s,i) => s + i.qty, 0);
+  const items = MENU_DATA.items.filter(i => i.cat === activeCat);
+
+  function openConfig(item) {
+    if (item.soldOut) return;
+    const hasMods = item.mods && item.mods.length > 0;
+    const hasVariants = item.variants && item.variants.length > 0;
+    if (!hasMods && !hasVariants) { addItem(item, null, {}); return; }
+    // Init default mods
+    const defaults = {};
+    (item.mods || []).forEach(m => { defaults[m.id] = m.default; });
+    setSelectedMods(defaults);
+    setSelectedVariant(hasVariants ? null : "none");
+    setConfigItem(item);
+  }
+
+  function addItem(item, variantIdx, mods) {
+    const vKey = variantIdx != null ? `-${variantIdx}` : "";
+    const modKey = Object.entries(mods||{}).filter(([,v])=>v).map(([k])=>k).join(",");
+    const key = `${item.id}${vKey}${modKey ? "-"+modKey : ""}-${Date.now()}`;
+    const price = variantIdx != null ? item.prices[variantIdx] : item.price;
+    const label = variantIdx != null ? item.variants[variantIdx] : null;
+    const modLabels = Object.entries(mods||{}).filter(([,v])=>!v).map(([k]) => {
+      const m = (item.mods||[]).find(m=>m.id===k);
+      return m ? "sin " + m.label.replace(/^(con|sin) /i,"").toLowerCase() : null;
+    }).filter(Boolean);
+    const modsNote = modLabels.length ? modLabels.join(", ") : "";
+    setCart(prev => [...prev, {key, id:item.id, name:item.name, label, price, qty:1, note:modsNote, mods}]);
+  }
+
+  function confirmConfig() {
+    if (!configItem) return;
+    const hasVariants = configItem.variants && configItem.variants.length > 0;
+    if (hasVariants && selectedVariant === null) return; // must pick variant
+    addItem(configItem, selectedVariant === "none" ? null : selectedVariant, selectedMods);
+    setConfigItem(null);
+  }
+
+  function toggleMod(id) {
+    setSelectedMods(prev => ({...prev, [id]: !prev[id]}));
+  }
+
+  const cartQtyForItem = (item) => cart.filter(c => c.id === item.id).reduce((s,c) => s+c.qty, 0);
+
+  return (
+    <div className="screen" style={{background:"var(--bg)"}}>
+      <StatusBar/>
+      {/* Sticky header */}
+      <div style={{background:"var(--bg)",padding:"0 20px 12px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <div>
+            <div style={{fontSize:17,fontWeight:800,color:"var(--text)",letterSpacing:"-0.3px"}}>El Smash del Barrio</div>
+            <div style={{fontSize:12,color:"var(--text3)",fontWeight:500}}>Hola, {customer?.name || "amigo"} 👋</div>
+          </div>
+          <button onClick={onCheckout} style={{position:"relative",background:"var(--orange)",borderRadius:12,padding:"8px 14px",display:"flex",alignItems:"center",gap:6,border:"none",cursor:"pointer"}}>
+            <span style={{fontSize:18}}>🛒</span>
+            <span style={{fontSize:14,fontWeight:700,color:"white"}}>{fmt(cart.reduce((s,i)=>s+i.price*i.qty,0))}</span>
+            {cartCount > 0 && <span style={{position:"absolute",top:-6,right:-6,background:"#EF4444",color:"white",fontSize:11,fontWeight:800,borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center"}}>{cartCount}</span>}
+          </button>
+        </div>
+        {/* Category tabs */}
+        <div ref={catRef} style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:2}} className="scrollable">
+          {MENU_DATA.categories.map(cat => (
+            <button key={cat} onClick={() => setActiveCat(cat)} style={{
+              flexShrink:0, padding:"7px 14px", borderRadius:999, fontSize:13, fontWeight:700,
+              background: activeCat===cat ? "var(--orange)" : "#F0DDD0",
+              color: activeCat===cat ? "white" : "var(--text2)",
+              border:"none",cursor:"pointer",transition:"all 0.2s"
+            }}>{cat}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="scrollable" style={{padding:"12px 0 100px"}}>
+        {items.map(item => {
+          const qty = cartQtyForItem(item);
+          return (
+            <div key={item.id} style={{display:"flex",gap:14,padding:"14px 20px",opacity:item.soldOut?.5:1,borderBottom:"1px solid var(--border)"}}>
+              <div style={{width:76,height:76,background:"#FFF1E6",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,flexShrink:0,position:"relative"}}>
+                {item.img}
+                {item.soldOut && <div style={{position:"absolute",inset:0,background:"rgba(255,248,241,0.75)",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:10,fontWeight:800,background:"#EF4444",color:"white",padding:"2px 6px",borderRadius:6}}>AGOTADO</span></div>}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:700,color:"var(--text)",textDecoration:item.soldOut?"line-through":"none",marginBottom:2}}>{item.name}</div>
+                <div style={{fontSize:12,color:"var(--text3)",lineHeight:1.4,marginBottom:6}}>{item.desc}</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{fontSize:16,fontWeight:800,color:"var(--orange)"}}>{fmt(item.price)}</div>
+                  {!item.soldOut && (
+                    qty > 0 ? (
+                      <div style={{display:"flex",alignItems:"center",gap:6,background:"#FFF1E6",borderRadius:999,padding:"4px"}}>
+                        <button onClick={() => {
+                          setCart(prev => prev.map(c => c.id===item.id && !c.label ? {...c, qty:c.qty-1} : c).filter(c=>c.qty>0));
+                        }} style={{width:28,height:28,background:"white",borderRadius:"50%",color:"var(--orange)",fontSize:20,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,border:"1.5px solid var(--orange-light)",cursor:"pointer"}}>−</button>
+                        <span style={{fontSize:14,fontWeight:800,color:"var(--orange)",minWidth:18,textAlign:"center"}}>{qty}</span>
+                        <button onClick={() => openConfig(item)} style={{width:28,height:28,background:"var(--orange)",borderRadius:"50%",color:"white",fontSize:18,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,cursor:"pointer"}}>+</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => openConfig(item)} style={{width:34,height:34,background:"var(--orange)",borderRadius:10,color:"white",fontSize:22,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(249,115,22,0.3)"}}>+</button>
+                    )
+                  )}
+                </div>
+                {(item.variants || item.mods) && !item.soldOut && (
+                  <div style={{fontSize:11,color:"var(--text3)",marginTop:3,display:"flex",gap:8}}>
+                    {item.variants && <span>Tamaños: {item.variants.join(" / ")}</span>}
+                    {item.mods && <span>· {item.mods.length} opciones</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Bottom CTA */}
+      {cartCount > 0 && (
+        <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"12px 20px 24px",background:"linear-gradient(to top,var(--bg) 70%,transparent)"}}>
+          <button className="btn-primary" onClick={onCheckout}>
+            Ver carrito · {cartCount} {cartCount===1?"ítem":"ítems"}
+          </button>
+        </div>
+      )}
+
+      {/* Config bottom sheet — variantes + modificaciones */}
+      {configItem && (
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"flex-end",zIndex:50}} onClick={() => setConfigItem(null)}>
+          <div style={{background:"white",borderRadius:"20px 20px 0 0",width:"100%",padding:"20px 20px 36px",maxHeight:"80%",overflowY:"auto"}} onClick={e => e.stopPropagation()}>
+            <div style={{width:40,height:4,background:"#DDD",borderRadius:99,margin:"0 auto 16px"}}></div>
+            <div style={{fontSize:18,fontWeight:800,marginBottom:2}}>{configItem.name}</div>
+            <div style={{fontSize:13,color:"var(--text3)",marginBottom:20}}>{configItem.desc}</div>
+
+            {/* Variantes */}
+            {configItem.variants && (
+              <div style={{marginBottom:20}}>
+                <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",textTransform:"uppercase",letterSpacing:0.8,marginBottom:10}}>Tamaño</div>
+                {configItem.variants.map((v, idx) => (
+                  <button key={v} onClick={() => setSelectedVariant(idx)} style={{
+                    width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",
+                    padding:"13px 16px",borderRadius:12,
+                    background: selectedVariant===idx ? "#FFF1E6" : "#F9F9F9",
+                    border: `2px solid ${selectedVariant===idx ? "var(--orange)" : "#EEE"}`,
+                    marginBottom:8,cursor:"pointer",fontSize:15,fontWeight:600,color:"var(--text)",
+                    transition:"all 0.15s"
+                  }}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${selectedVariant===idx?"var(--orange)":"#CCC"}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        {selectedVariant===idx && <div style={{width:9,height:9,borderRadius:"50%",background:"var(--orange)"}}></div>}
+                      </div>
+                      <span>{v}</span>
+                    </div>
+                    <span style={{color:"var(--orange)",fontWeight:800}}>{fmt(configItem.prices[idx])}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Modificaciones */}
+            {configItem.mods && configItem.mods.length > 0 && (
+              <div style={{marginBottom:24}}>
+                <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",textTransform:"uppercase",letterSpacing:0.8,marginBottom:10}}>Personalizá tu pedido</div>
+                {configItem.mods.map(mod => (
+                  <div key={mod.id} onClick={() => toggleMod(mod.id)} style={{
+                    display:"flex",alignItems:"center",gap:12,padding:"13px 16px",
+                    borderRadius:12,marginBottom:8,cursor:"pointer",
+                    background: selectedMods[mod.id] ? "#FFF1E6" : "#F9F9F9",
+                    border: `2px solid ${selectedMods[mod.id] ? "var(--orange)" : "#EEE"}`,
+                    transition:"all 0.15s"
+                  }}>
+                    <div style={{
+                      width:22,height:22,borderRadius:6,flexShrink:0,
+                      background: selectedMods[mod.id] ? "var(--orange)" : "white",
+                      border: `2px solid ${selectedMods[mod.id] ? "var(--orange)" : "#CCC"}`,
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      transition:"all 0.15s"
+                    }}>
+                      {selectedMods[mod.id] && <span style={{color:"white",fontSize:14,fontWeight:900,lineHeight:1}}>✓</span>}
+                    </div>
+                    <span style={{fontSize:15,fontWeight:600,color:"var(--text)",flex:1}}>{mod.label}</span>
+                    {mod.default && <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",background:"#F0F0F0",padding:"2px 7px",borderRadius:6}}>por defecto</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={confirmConfig}
+              disabled={configItem.variants && selectedVariant === null}
+              style={{
+                width:"100%",padding:"15px",background:"var(--orange)",color:"white",
+                borderRadius:12,fontWeight:700,fontSize:16,
+                opacity: configItem.variants && selectedVariant===null ? 0.45 : 1,
+                transition:"opacity 0.2s",
+                boxShadow:"0 4px 16px rgba(249,115,22,0.35)"
+              }}>
+              {configItem.variants && selectedVariant===null ? "Elegí un tamaño" : `Agregar al carrito · ${fmt(selectedVariant != null && selectedVariant !== "none" && configItem.prices ? configItem.prices[selectedVariant] : configItem.price)}`}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+//  SCREEN 3 — CARRITO
+// ============================================================
+function CartScreen({ cart, setCart, onBack, onPay }) {
+  const [tipPct, setTipPct] = useState(10);
+  const [customTip, setCustomTip] = useState("");
+  const [showCustom, setShowCustom] = useState(false);
+  const subtotal = cart.reduce((s,i) => s + i.price*i.qty, 0);
+  const tipAmt = showCustom ? (parseInt(customTip)||0) : Math.round(subtotal * tipPct / 100);
+  const total = subtotal + tipAmt;
+
+  function changeQty(key, delta) {
+    setCart(prev => prev.map(c => c.key===key ? {...c, qty: Math.max(0, c.qty+delta)} : c).filter(c => c.qty > 0));
+  }
+
+  if (cart.length === 0) return (
+    <div className="screen" style={{background:"var(--bg)"}}>
+      <StatusBar/>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,padding:40,gap:16}}>
+        <div style={{fontSize:64}}>🛒</div>
+        <div style={{fontSize:18,fontWeight:700,color:"var(--text)"}}>El carrito está vacío</div>
+        <div style={{fontSize:14,color:"var(--text3)",textAlign:"center"}}>Agregá algo del menú y volvé acá</div>
+        <button className="btn-primary" onClick={onBack} style={{marginTop:8}}>← Ir al menú</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="screen" style={{background:"var(--bg)"}}>
+      <StatusBar/>
+      <div style={{padding:"8px 20px 14px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+        <button onClick={onBack} style={{width:36,height:36,borderRadius:10,background:"#F0DDD0",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,border:"none",cursor:"pointer"}}>←</button>
+        <div style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>Tu pedido</div>
+      </div>
+
+      <div className="scrollable" style={{padding:"16px 20px",paddingBottom:220}}>
+        {cart.map(item => (
+          <div key={item.key} style={{background:"white",borderRadius:14,padding:"14px",marginBottom:10,boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:700,color:"var(--text)"}}>{item.name}</div>
+                {item.label && <div style={{fontSize:12,color:"var(--text3)",marginTop:1}}>Opción: {item.label}</div>}
+              </div>
+              <div style={{fontSize:15,fontWeight:800,color:"var(--orange)"}}>{fmt(item.price * item.qty)}</div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <button onClick={() => changeQty(item.key,-1)} style={{width:30,height:30,borderRadius:8,background:"#F0DDD0",fontSize:16,fontWeight:700,color:"var(--text2)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                <span style={{fontSize:16,fontWeight:700,minWidth:20,textAlign:"center"}}>{item.qty}</span>
+                <button onClick={() => changeQty(item.key,+1)} style={{width:30,height:30,borderRadius:8,background:"var(--orange)",fontSize:16,fontWeight:700,color:"white",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+              </div>
+              <div style={{fontSize:12,color:"var(--text3)"}}>{fmt(item.price)} c/u</div>
+            </div>
+          </div>
+        ))}
+
+        {/* Propina */}
+        <div style={{background:"white",borderRadius:14,padding:"16px",marginTop:6,boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}>
+          <div style={{fontSize:14,fontWeight:700,color:"var(--text)",marginBottom:12}}>¿Le dejás propina al equipo? 🙌</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {[0,5,10,15].map(pct => (
+              <button key={pct} onClick={() => { setTipPct(pct); setShowCustom(false); }} style={{
+                flex:1, padding:"10px 6px", borderRadius:10, fontSize:13, fontWeight:700,
+                background: (!showCustom&&tipPct===pct) ? "var(--orange)" : "#F0DDD0",
+                color: (!showCustom&&tipPct===pct) ? "white" : "var(--text2)",
+                border:"none",cursor:"pointer",transition:"all 0.15s",minWidth:56
+              }}>
+                {pct===0 ? "Sin propina" : `${pct}%`}
+              </button>
+            ))}
+            <button onClick={() => setShowCustom(true)} style={{
+              flex:1, padding:"10px 6px", borderRadius:10, fontSize:13, fontWeight:700,
+              background: showCustom ? "var(--orange)" : "#F0DDD0",
+              color: showCustom ? "white" : "var(--text2)",
+              border:"none",cursor:"pointer",minWidth:56
+            }}>Otro</button>
+          </div>
+          {showCustom && (
+            <input
+              style={{marginTop:10,width:"100%",padding:"10px 14px",borderRadius:10,border:"2px solid var(--orange)",fontSize:15,fontWeight:600,color:"var(--text)",background:"#FFFBF7",outline:"none"}}
+              placeholder="Monto en pesos"
+              value={customTip}
+              onChange={e => setCustomTip(e.target.value)}
+              type="number"
+              inputMode="numeric"
+            />
+          )}
+        </div>
+
+        {/* Desglose */}
+        <div style={{background:"white",borderRadius:14,padding:"16px",marginTop:10,boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:14,color:"var(--text2)",marginBottom:6}}><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:14,color:"var(--text2)",marginBottom:10}}><span>Propina</span><span>{fmt(tipAmt)}</span></div>
+          <div style={{height:1,background:"var(--border)",marginBottom:10}}></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:18,fontWeight:800,color:"var(--text)"}}><span>Total</span><span>{fmt(total)}</span></div>
+        </div>
+      </div>
+
+      {/* Fixed pay button */}
+      <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"12px 20px 28px",background:"linear-gradient(to top,white 70%,transparent)"}}>
+        <button className="btn-primary" onClick={() => onPay(total)} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+          <span style={{fontSize:18}}>💳</span>
+          <span>Pagar con Mercado Pago · {fmt(total)}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+//  SCREEN 4 — TICKET EN COLA
+// ============================================================
+function TicketWaitingScreen({ ticketNum, onReady }) {
+  const steps = [
+    { icon:"✅", label:"Pagado", done:true },
+    { icon:"⏳", label:"En cola", done:true, active:true },
+    { icon:"🔥", label:"Preparando", done:false },
+    { icon:"🔔", label:"Listo", done:false },
+  ];
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setElapsed(e => e+1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div className="screen" style={{background:"var(--bg)"}}>
+      <StatusBar/>
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px 28px",gap:0}}>
+        {/* Ticket number */}
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text3)",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Tu número de ticket</div>
+        <div style={{fontFamily:"DM Mono, monospace",fontSize:96,fontWeight:700,color:"var(--text)",lineHeight:1,letterSpacing:"-4px",marginBottom:6}}>
+          #{String(ticketNum).padStart(3,"0")}
+        </div>
+        <div style={{fontSize:14,color:"var(--text3)",marginBottom:32,fontWeight:500}}>Tiempo estimado: <strong style={{color:"var(--orange)"}}>~ 10 min</strong></div>
+
+        {/* Progress steps */}
+        <div style={{display:"flex",gap:0,width:"100%",maxWidth:300,marginBottom:32}}>
+          {steps.map((step, idx) => (
+            <div key={idx} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",position:"relative"}}>
+              {idx < steps.length-1 && (
+                <div style={{position:"absolute",top:17,left:"50%",width:"100%",height:2,background:step.done?"var(--orange)":"#F0DDD0",zIndex:0}}></div>
+              )}
+              <div style={{width:34,height:34,borderRadius:"50%",background:step.done?"var(--orange)":"#F0DDD0",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,marginBottom:6,zIndex:1,boxShadow:step.active?"0 0 0 4px rgba(249,115,22,0.2)":"none",transition:"all 0.3s"}}>{step.icon}</div>
+              <div style={{fontSize:10,fontWeight:step.active?700:500,color:step.done?"var(--orange)":"var(--text3)",textAlign:"center"}}>{step.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Info box */}
+        <div style={{background:"#FFF1E6",borderRadius:14,padding:"14px 18px",width:"100%",textAlign:"center",marginBottom:16}}>
+          <div style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>🔒 <strong>No cierres esta pantalla.</strong><br/>Te vamos a avisar acá cuando esté listo.</div>
+        </div>
+
+        {/* Dev shortcut */}
+        <button onClick={onReady} style={{marginTop:8,fontSize:12,color:"var(--text3)",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>
+          [dev] → Simular "¡LISTO!"
+        </button>
+
+        <button className="btn-secondary" style={{marginTop:"auto",color:"#EF4444",fontSize:13}}>Cancelar pedido</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+//  SCREEN 5 — TICKET LISTO 🎉
+// ============================================================
+function TicketReadyScreen({ ticketNum, onDone }) {
+  const [pulse, setPulse] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setPulse(p => p+1), 800);
+    return () => clearInterval(t);
+  }, []);
+  const colors = ["#FF6B00","#FF8C00","#FFA500","#FF6B00"];
+  const bg = colors[pulse % colors.length];
+
+  return (
+    <div className="screen" style={{background:bg,transition:"background 0.6s ease",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px 28px",gap:16}}>
+      <div style={{fontSize:72,animation:"bounce 0.8s infinite alternate"}}>🔔</div>
+      <div style={{fontSize:64,fontWeight:900,color:"white",letterSpacing:"-2px",textShadow:"0 4px 20px rgba(0,0,0,0.25)",lineHeight:1}}>¡LISTO!</div>
+      <div style={{fontFamily:"DM Mono, monospace",fontSize:88,fontWeight:700,color:"white",lineHeight:1,letterSpacing:"-4px",textShadow:"0 6px 24px rgba(0,0,0,0.3)"}}>
+        #{String(ticketNum).padStart(3,"0")}
+      </div>
+      <div style={{fontSize:22,fontWeight:700,color:"rgba(255,255,255,0.9)",letterSpacing:"-0.3px",marginTop:4}}>Pasá a retirar</div>
+      <div style={{display:"flex",gap:8,marginTop:8}}>
+        {[0,1,2,3,4].map(i => <span key={i} style={{fontSize:24,animation:`float ${0.5+i*0.1}s ease-in-out infinite alternate`}}>⭐</span>)}
+      </div>
+      <button onClick={onDone} style={{
+        marginTop:16,background:"rgba(255,255,255,0.25)",backdropFilter:"blur(8px)",
+        color:"white",fontSize:17,fontWeight:800,padding:"16px 40px",
+        borderRadius:16,border:"2px solid rgba(255,255,255,0.4)",cursor:"pointer",
+        boxShadow:"0 4px 20px rgba(0,0,0,0.2)",letterSpacing:"-0.2px"
+      }}>OK, ya lo vi ✓</button>
+      <style>{`
+        @keyframes bounce { from { transform: scale(1) translateY(0); } to { transform: scale(1.1) translateY(-8px); } }
+        @keyframes float { from { transform: translateY(0) rotate(-5deg); } to { transform: translateY(-8px) rotate(5deg); } }
+      `}</style>
+    </div>
+  );
+}
+
+// ============================================================
+//  SCREEN 6 — TRUCK CERRADO
+// ============================================================
+function ClosedScreen() {
+  return (
+    <div className="screen" style={{background:"var(--bg)"}}>
+      <StatusBar/>
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 28px",gap:16,textAlign:"center"}}>
+        {/* Truck SVG illustration */}
+        <svg width="160" height="100" viewBox="0 0 160 100" fill="none">
+          <rect x="10" y="40" width="110" height="50" rx="8" fill="#DDD"/>
+          <rect x="10" y="40" width="110" height="20" rx="8" fill="#BBB"/>
+          <rect x="20" y="32" width="90" height="20" rx="4" fill="#C8B49A"/>
+          {/* Persianas */}
+          {[0,1,2,3,4].map(i => <rect key={i} x="22" y={34+i*4} width="86" height="2" rx="1" fill="#A09080"/>)}
+          <circle cx="35" cy="96" r="10" fill="#888"/>
+          <circle cx="35" cy="96" r="5" fill="#CCC"/>
+          <circle cx="95" cy="96" r="10" fill="#888"/>
+          <circle cx="95" cy="96" r="5" fill="#CCC"/>
+          <rect x="120" y="60" width="30" height="30" rx="4" fill="#DDD"/>
+          <rect x="125" y="65" width="20" height="10" rx="2" fill="#BBB"/>
+          <rect x="140" y="86" width="16" height="4" rx="2" fill="#CCC"/>
+          {/* Cerrado sign */}
+          <rect x="40" y="20" width="50" height="20" rx="6" fill="#EF4444"/>
+          <text x="65" y="34" textAnchor="middle" fontSize="9" fontWeight="bold" fill="white" fontFamily="DM Sans">CERRADO</text>
+        </svg>
+
+        <div style={{fontSize:32,fontWeight:900,color:"var(--text)",letterSpacing:"-1px",marginTop:8}}>Estamos cerrados 😴</div>
+        <div style={{fontSize:15,color:"var(--text2)",lineHeight:1.6,maxWidth:280}}>El truck no está operando en este momento. Volvé pronto.</div>
+
+        <div style={{background:"white",borderRadius:16,padding:"16px 24px",boxShadow:"0 2px 12px rgba(0,0,0,0.08)",marginTop:8}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Próximo horario</div>
+          {[{day:"Lun – Vie",hours:"12:00 – 22:00"},{day:"Sábado",hours:"12:00 – 23:00"},{day:"Domingo",hours:"13:00 – 21:00"}].map(({day,hours}) => (
+            <div key={day} style={{display:"flex",justifyContent:"space-between",gap:40,fontSize:14,marginBottom:6}}>
+              <span style={{color:"var(--text2)",fontWeight:500}}>{day}</span>
+              <span style={{fontWeight:700,color:"var(--text)"}}>{hours}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{fontSize:13,color:"var(--text3)",marginTop:4}}>Abrimos mañana a las <strong style={{color:"var(--orange)"}}>12:00</strong></div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+//  APP ROOT
+// ============================================================
+function App() {
+  const [screen, setScreen] = useState(() => localStorage.getItem("ft_screen") || "landing");
+  const [customer, setCustomer] = useState(null);
+  const [cart, setCart] = useState([]);
+  const [tweaks, setTweaks] = useState(TWEAK_DEFAULTS);
+  const [showTweaks, setShowTweaks] = useState(false);
+  const TICKET = 42;
+
+  useEffect(() => { localStorage.setItem("ft_screen", screen); }, [screen]);
+
+  // Tweaks protocol
+  useEffect(() => {
+    window.addEventListener("message", e => {
+      if (e.data?.type === "__activate_edit_mode") setShowTweaks(true);
+      if (e.data?.type === "__deactivate_edit_mode") setShowTweaks(false);
+    });
+    window.parent.postMessage({type:"__edit_mode_available"}, "*");
+  }, []);
+
+  function applyTweak(k, v) {
+    const next = {...tweaks, [k]:v};
+    setTweaks(next);
+    window.parent.postMessage({type:"__edit_mode_set_keys", edits:{[k]:v}}, "*");
+    // Apply CSS var
+    if (k === "primaryColor") document.documentElement.style.setProperty("--orange", v);
+    if (k === "bgColor") document.documentElement.style.setProperty("--bg", v);
+    if (k === "roundness") document.documentElement.style.setProperty("--radius", v+"px");
+  }
+
+  const screens = [
+    {id:"landing",label:"Landing"},
+    {id:"menu",label:"Menú"},
+    {id:"cart",label:"Carrito"},
+    {id:"waiting",label:"En cola"},
+    {id:"ready",label:"¡LISTO!"},
+    {id:"closed",label:"Cerrado"},
+  ];
+
+  return (
+    <>
+      <div className="phone-shell">
+        {screen === "landing" && <LandingScreen onNext={c => { setCustomer(c); setScreen("menu"); }}/>}
+        {screen === "menu" && <MenuScreen customer={customer} cart={cart} setCart={setCart} onCheckout={() => setScreen("cart")}/>}
+        {screen === "cart" && <CartScreen cart={cart} setCart={setCart} onBack={() => setScreen("menu")} onPay={() => setScreen("waiting")}/>}
+        {screen === "waiting" && <TicketWaitingScreen ticketNum={TICKET} onReady={() => setScreen("ready")}/>}
+        {screen === "ready" && <TicketReadyScreen ticketNum={TICKET} onDone={() => setScreen("landing")}/>}
+        {screen === "closed" && <ClosedScreen/>}
+      </div>
+
+      {/* Dev nav */}
+      <div className="dev-nav">
+        {screens.map(s => (
+          <button key={s.id} className={screen===s.id?"active":""} onClick={() => setScreen(s.id)}>{s.label}</button>
+        ))}
+      </div>
+
+      {/* Tweaks panel */}
+      <div className={`tweaks-panel ${showTweaks?"open":""}`}>
+        <h3>Tweaks</h3>
+        <div className="tweak-row">
+          <label>Color primario</label>
+          <input type="color" value={tweaks.primaryColor} onChange={e => applyTweak("primaryColor", e.target.value)}/>
+        </div>
+        <div className="tweak-row">
+          <label>Fondo</label>
+          <input type="color" value={tweaks.bgColor} onChange={e => applyTweak("bgColor", e.target.value)}/>
+        </div>
+        <div className="tweak-row">
+          <label>Redondez</label>
+          <input type="range" min="4" max="24" value={tweaks.roundness} onChange={e => applyTweak("roundness", e.target.value)} style={{width:"100%"}}/>
+        </div>
+        <div className="tweak-row">
+          <label>Tipografía ticket</label>
+          <select value={tweaks.ticketFont} onChange={e => applyTweak("ticketFont", e.target.value)}>
+            <option value="DM Mono">DM Mono</option>
+            <option value="monospace">Monospace</option>
+            <option value="DM Sans">DM Sans</option>
+          </select>
+        </div>
+      </div>
+
+      <template id="__bundler_thumbnail" data-bg-color="#F97316">
+        <svg viewBox="0 0 375 812" xmlns="http://www.w3.org/2000/svg">
+          <rect width="375" height="812" fill="#F97316"/>
+          <text x="187" y="420" textAnchor="middle" fontSize="120" fontFamily="monospace" fontWeight="700" fill="white">#042</text>
+          <text x="187" y="520" textAnchor="middle" fontSize="48" fontFamily="sans-serif" fontWeight="800" fill="rgba(255,255,255,0.9)">¡LISTO!</text>
+        </svg>
+      </template>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

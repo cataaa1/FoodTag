@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FoodTag — Design System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --orange: #F97316;
+  --bg: #F5F0EB;
+  --text: #1A0F07;
+  --text2: #6B4E35;
+}
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  min-height: 100vh;
+  color: var(--text);
+}
+
+header {
+  padding: 48px 48px 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.logo-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.logo-icon {
+  width: 56px; height: 56px;
+  background: var(--orange);
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px;
+  box-shadow: 0 4px 20px rgba(249,115,22,0.35);
+}
+.logo-name {
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: -1.5px;
+  color: var(--text);
+}
+.logo-tag {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text2);
+  margin-top: 1px;
+}
+.header-meta {
+  font-size: 13px;
+  color: var(--text2);
+  text-align: right;
+  line-height: 1.6;
+}
+.header-meta strong { color: var(--text); font-weight: 700; }
+
+.divider {
+  height: 1px;
+  background: linear-gradient(to right, rgba(0,0,0,0.08), transparent);
+  margin: 32px 48px 0;
+}
+
+main { padding: 40px 48px 80px; }
+
+.section-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text2);
+  margin-bottom: 20px;
+}
+
+/* FLOW CARDS */
+.flow-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 56px;
+}
+
+.flow-card {
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.07);
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+}
+.flow-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.13);
+}
+
+.flow-card-preview {
+  height: 220px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.flow-card-preview iframe {
+  border: none;
+  position: absolute;
+  top: 0; left: 0;
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.flow-card-body {
+  padding: 20px 24px 24px;
+  border-top: 1px solid #F0F0F0;
+}
+.flow-card-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  margin-bottom: 4px;
+}
+.flow-card-desc {
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.flow-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #F5F0EB;
+  color: var(--text2);
+}
+.open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: white;
+  background: var(--orange);
+  padding: 10px 18px;
+  border-radius: 10px;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+  box-shadow: 0 2px 8px rgba(249,115,22,0.3);
+}
+.open-btn:hover { background: #EA6706; }
+
+/* SCREENS GRID */
+.screens-section { margin-bottom: 48px; }
+.screens-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.screen-thumb {
+  background: white;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1.5px solid #EEE;
+  transition: border 0.15s, transform 0.15s;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+.screen-thumb:hover { border-color: var(--orange); transform: translateY(-2px); }
+.screen-thumb-preview {
+  height: 130px;
+  overflow: hidden;
+  position: relative;
+  background: #F9F9F9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.screen-thumb-preview iframe {
+  border: none;
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+  transform-origin: top left;
+}
+.screen-thumb-label {
+  padding: 10px 12px;
+  border-top: 1px solid #F0F0F0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.screen-thumb-label .group {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text2);
+  background: #F5F0EB;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+/* TOKENS */
+.tokens-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 48px;
+}
+.token-card {
+  background: white;
+  border-radius: 12px;
+  padding: 14px;
+  border: 1.5px solid #EEE;
+}
+.color-swatch {
+  width: 100%;
+  height: 48px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.token-name { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+.token-value { font-size: 11px; color: var(--text2); font-family: 'DM Mono', monospace; }
+
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-row">
+    <div class="logo-icon">🚚</div>
+    <div>
+      <div class="logo-name">FoodTag</div>
+      <div class="logo-tag">Sistema de pedidos para food trucks · MVP single-tenant</div>
+    </div>
+  </div>
+  <div class="header-meta">
+    <strong>14 pantallas</strong> · 3 flujos de usuario<br>
+    Cliente · Staff · Admin
+  </div>
+</header>
+
+<div class="divider"></div>
+
+<main>
+
+  <!-- FLUJOS PRINCIPALES -->
+  <div class="section-label">Flujos principales</div>
+  <div class="flow-grid">
+
+    <!-- CLIENTE -->
+    <div class="flow-card" onclick="window.open('FoodTag - Cliente.html','_blank')">
+      <div class="flow-card-preview" style="background: #FFF8F1;">
+        <iframe
+          src="FoodTag - Cliente.html"
+          id="iframe-client"
+          scrolling="no"
+        ></iframe>
+      </div>
+      <div class="flow-card-body">
+        <div class="flow-card-title">🧑 Flujo del cliente</div>
+        <div class="flow-card-desc">Desde el escaneo del QR hasta el retiro del pedido. Mobile-first, 375px. Incluye beeper digital animado.</div>
+        <div class="flow-card-chips">
+          <span class="chip">Landing</span>
+          <span class="chip">Menú</span>
+          <span class="chip">Carrito</span>
+          <span class="chip">Ticket</span>
+          <span class="chip">¡LISTO!</span>
+          <span class="chip">Cerrado</span>
+        </div>
+        <a href="FoodTag - Cliente.html" target="_blank" class="open-btn">Abrir prototipo →</a>
+      </div>
+    </div>
+
+    <!-- STAFF -->
+    <div class="flow-card" onclick="window.open('FoodTag - Staff.html','_blank')">
+      <div class="flow-card-preview" style="background: #0F0F0F;">
+        <iframe
+          src="FoodTag - Staff.html"
+          id="iframe-staff"
+          scrolling="no"
+        ></iframe>
+      </div>
+      <div class="flow-card-body">
+        <div class="flow-card-title">👨‍🍳 Flujo del staff</div>
+        <div class="flow-card-desc">Kanban en dark mode. Pensado para tablet horizontal en cocina. Botones grandes, contraste alto.</div>
+        <div class="flow-card-chips">
+          <span class="chip">Login</span>
+          <span class="chip">Kanban desktop</span>
+          <span class="chip">Kanban mobile</span>
+          <span class="chip">Detalle de pedido</span>
+        </div>
+        <a href="FoodTag - Staff.html" target="_blank" class="open-btn">Abrir prototipo →</a>
+      </div>
+    </div>
+
+    <!-- ADMIN -->
+    <div class="flow-card" onclick="window.open('FoodTag - Admin.html','_blank')">
+      <div class="flow-card-preview" style="background: #FAFAFA;">
+        <iframe
+          src="FoodTag - Admin.html"
+          id="iframe-admin"
+          scrolling="no"
+        ></iframe>
+      </div>
+      <div class="flow-card-body">
+        <div class="flow-card-title">⚙️ Panel admin</div>
+        <div class="flow-card-desc">Dashboard de métricas, gestión de menú, horarios y usuarios con control de permisos por rol.</div>
+        <div class="flow-card-chips">
+          <span class="chip">Dashboard</span>
+          <span class="chip">Menú</span>
+          <span class="chip">Horarios</span>
+          <span class="chip">Usuarios & roles</span>
+        </div>
+        <a href="FoodTag - Admin.html" target="_blank" class="open-btn">Abrir prototipo →</a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TOKENS DE DISEÑO -->
+  <div class="section-label">Tokens de diseño</div>
+  <div class="tokens-grid">
+    <div class="token-card"><div class="color-swatch" style="background:#F97316"></div><div class="token-name">Primario</div><div class="token-value">#F97316</div></div>
+    <div class="token-card"><div class="color-swatch" style="background:#FFF8F1;border:1px solid #EEE"></div><div class="token-name">Fondo cliente</div><div class="token-value">#FFF8F1</div></div>
+    <div class="token-card"><div class="color-swatch" style="background:#0F0F0F"></div><div class="token-name">Fondo staff</div><div class="token-value">#0F0F0F</div></div>
+    <div class="token-card"><div class="color-swatch" style="background:#EF4444"></div><div class="token-name">Alerta / Listo</div><div class="token-value">#EF4444</div></div>
+    <div class="token-card"><div class="color-swatch" style="background:#22C55E"></div><div class="token-name">Éxito / Abierto</div><div class="token-value">#22C55E</div></div>
+    <div class="token-card"><div class="color-swatch" style="background:#EAB308"></div><div class="token-name">Advertencia</div><div class="token-value">#EAB308</div></div>
+    <div class="token-card" style="border:none;background:transparent;padding:14px 0">
+      <div class="token-name" style="margin-bottom:6px">Tipografía UI</div>
+      <div style="font-family:'DM Sans';font-size:18px;font-weight:700;margin-bottom:2px">DM Sans</div>
+      <div class="token-value">Aa Bb Cc 123</div>
+    </div>
+    <div class="token-card" style="border:none;background:transparent;padding:14px 0">
+      <div class="token-name" style="margin-bottom:6px">Tipografía tickets</div>
+      <div style="font-family:'DM Mono';font-size:22px;font-weight:700;margin-bottom:2px">#042</div>
+      <div class="token-value">DM Mono · Display</div>
+    </div>
+    <div class="token-card">
+      <div style="height:48px;display:flex;align-items:center;gap:6px;margin-bottom:10px">
+        <div style="width:32px;height:32px;border-radius:8px;background:#EEE"></div>
+        <div style="width:32px;height:32px;border-radius:14px;background:#EEE"></div>
+        <div style="width:32px;height:32px;border-radius:99px;background:#EEE"></div>
+      </div>
+      <div class="token-name">Radio de bordes</div>
+      <div class="token-value">8 / 14 / 999px</div>
+    </div>
+  </div>
+
+  <!-- NOTAS DE DISEÑO -->
+  <div class="section-label">Decisiones de diseño</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:48px">
+    <div style="background:white;border-radius:14px;padding:18px;border:1.5px solid #EEE">
+      <div style="font-size:14px;font-weight:800;margin-bottom:6px">🔔 Pantalla "¡LISTO!"</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6">Fondo que pulsa entre naranjas para maximizar atención en entornos ruidosos. Número de ticket en DM Mono a 88px — legible a 3 metros. Sensación festiva, no de alarma.</div>
+    </div>
+    <div style="background:white;border-radius:14px;padding:18px;border:1.5px solid #EEE">
+      <div style="font-size:14px;font-weight:800;margin-bottom:6px">🌙 Dark mode solo en Kanban</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6">El staff pasa horas mirando el tablero en cocina. El dark mode reduce fatiga visual y da mayor contraste a los badges de alerta (amarillo y rojo destacan más sobre negro).</div>
+    </div>
+    <div style="background:white;border-radius:14px;padding:18px;border:1.5px solid #EEE">
+      <div style="font-size:14px;font-weight:800;margin-bottom:6px">📱 Botones grandes en mobile</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6">Targets mínimos de 44px en cliente, 48–54px en staff. En Kanban mobile los botones "Avanzar" son full-width: se pueden activar con el canto de la mano sucia.</div>
+    </div>
+    <div style="background:white;border-radius:14px;padding:18px;border:1.5px solid #EEE">
+      <div style="font-size:14px;font-weight:800;margin-bottom:6px">🎨 Naranja callejero</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6">#F97316 evoca comida, energía y urgencia positiva. El crema #FFF8F1 da calidez sin ser blanco puro. La paleta funciona bien a plena luz solar (contraste WCAG AA).</div>
+    </div>
+    <div style="background:white;border-radius:14px;padding:18px;border:1.5px solid #EEE">
+      <div style="font-size:14px;font-weight:800;margin-bottom:6px">📋 Kanban 3 columnas</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6">Sin drag & drop en mobile — demasiado difícil con las manos ocupadas. Se reemplaza con botón "→ Avanzar" prominente. En desktop sí hay quick-action en el borde inferior de cada card.</div>
+    </div>
+    <div style="background:white;border-radius:14px;padding:18px;border:1.5px solid #EEE">
+      <div style="font-size:14px;font-weight:800;margin-bottom:6px">🔒 Roles protegidos</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6">Admin, Cajero y Cocina tienen ícono de candado: no se pueden eliminar ni renombrar. Evita que un admin accidental rompa la estructura de permisos del MVP.</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// Scale iframes to fit preview containers
+function scaleIframe(id, containerW, containerH, contentW) {
+  const iframe = document.getElementById(id);
+  if (!iframe) return;
+  const scale = containerW / contentW;
+  iframe.style.width = contentW + "px";
+  iframe.style.height = Math.ceil(containerH / scale) + "px";
+  iframe.style.transform = `scale(${scale})`;
+}
+
+function rescale() {
+  const previewW = document.querySelector('.flow-card-preview')?.clientWidth || 380;
+  scaleIframe("iframe-client", previewW, 220, 375);
+  scaleIframe("iframe-staff",  previewW, 220, 1200);
+  scaleIframe("iframe-admin",  previewW, 220, 1440);
+}
+
+window.addEventListener("load", () => { setTimeout(rescale, 300); });
+window.addEventListener("resize", rescale);
+</script>
+</body>
+</html>
