@@ -1,15 +1,29 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
-import { handleRouteError } from "@/lib/api/errors";
+import { ApiError, handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody, parseParams } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  categoryRowSchema,
-  categoryUpdateSchema,
-  idParamSchema,
-} from "@/lib/validators/menu";
+import { getDb } from "@/lib/db/client";
+import { categoryUpdateSchema, idParamSchema } from "@/lib/validators/menu";
+
+type CategoryRow = {
+  id: string;
+  name: string;
+  position: number;
+  visible: number;
+  created_at: string;
+};
+
+function mapCategory(row: CategoryRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    position: row.position,
+    visible: Boolean(row.visible),
+    created_at: row.created_at,
+  };
+}
 
 export async function PATCH(
   request: Request,
@@ -20,27 +34,44 @@ export async function PATCH(
 
     const params = parseParams(await context.params, idParamSchema);
     const body = await parseJsonBody(request, categoryUpdateSchema);
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
-      .from("category")
-      .update({
-        name: body.name,
-        position: body.position,
-        visible: body.visible,
-      })
-      .eq("id", params.id)
-      .select("*")
-      .single();
+    const db = getDb();
+    const current = db
+      .prepare<{ id: string }, CategoryRow>("select * from category where id = @id")
+      .get({ id: params.id });
 
-    if (error) {
-      throw error;
+    if (!current) {
+      throw new ApiError(404, "NOT_FOUND", "Categoría no encontrada");
     }
+
+    db.prepare(
+      `
+        update category set
+          name = @name,
+          position = @position,
+          visible = @visible
+        where id = @id
+      `,
+    ).run({
+      id: params.id,
+      name: body.name ?? current.name,
+      position: body.position ?? current.position,
+      visible:
+        body.visible === undefined
+          ? current.visible
+          : body.visible
+            ? 1
+            : 0,
+    });
+
+    const category = db
+      .prepare<{ id: string }, CategoryRow>("select * from category where id = @id")
+      .get({ id: params.id });
 
     revalidatePath("/menu");
     revalidatePath("/admin");
     revalidatePath("/admin/menu");
 
-    return NextResponse.json({ category: categoryRowSchema.parse(data) });
+    return NextResponse.json({ category: category ? mapCategory(category) : null });
   } catch (error) {
     return handleRouteError(error);
   }
@@ -54,12 +85,7 @@ export async function DELETE(
     await requireStaffPermission("menu.write");
 
     const params = parseParams(await context.params, idParamSchema);
-    const supabase = getSupabaseAdmin();
-    const { error } = await supabase.from("category").delete().eq("id", params.id);
-
-    if (error) {
-      throw error;
-    }
+    getDb().prepare("delete from category where id = ?").run(params.id);
 
     revalidatePath("/menu");
     revalidatePath("/admin");

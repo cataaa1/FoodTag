@@ -1,15 +1,28 @@
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  menuQuerySchema,
-  menuVariantRowSchema,
-  variantCreateSchema,
-} from "@/lib/validators/menu";
+import { getDb } from "@/lib/db/client";
+import { menuQuerySchema, variantCreateSchema } from "@/lib/validators/menu";
+
+type VariantRow = {
+  id: string;
+  menu_item_id: string;
+  name: string;
+  price_cents: number;
+  available: number;
+  position: number;
+};
+
+function mapVariant(row: VariantRow) {
+  return {
+    ...row,
+    available: Boolean(row.available),
+  };
+}
 
 export async function GET(request: Request) {
   try {
@@ -19,24 +32,18 @@ export async function GET(request: Request) {
     const query = menuQuerySchema.parse(
       Object.fromEntries(url.searchParams.entries()),
     );
+    const db = getDb();
+    const variants = query.menuItemId
+      ? db
+          .prepare<{ menuItemId: string }, VariantRow>(
+            "select * from menu_variant where menu_item_id = @menuItemId order by position asc",
+          )
+          .all({ menuItemId: query.menuItemId })
+      : db
+          .prepare<[], VariantRow>("select * from menu_variant order by position asc")
+          .all();
 
-    const supabase = getSupabaseAdmin();
-    let builder = supabase
-      .from("menu_variant")
-      .select("*")
-      .order("position", { ascending: true });
-
-    if (query.menuItemId) {
-      builder = builder.eq("menu_item_id", query.menuItemId);
-    }
-
-    const { data, error } = await builder;
-
-    if (error) {
-      throw error;
-    }
-
-    return NextResponse.json({ variants: menuVariantRowSchema.array().parse(data) });
+    return NextResponse.json({ variants: variants.map(mapVariant) });
   } catch (error) {
     return handleRouteError(error);
   }
@@ -47,29 +54,35 @@ export async function POST(request: Request) {
     await requireStaffPermission("menu.write");
 
     const body = await parseJsonBody(request, variantCreateSchema);
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
-      .from("menu_variant")
-      .insert({
-        menu_item_id: body.menuItemId,
-        name: body.name,
-        price_cents: body.priceCents,
-        available: body.available,
-        position: body.position,
-      })
-      .select("*")
-      .single();
+    const db = getDb();
+    const id = randomUUID();
 
-    if (error) {
-      throw error;
-    }
+    db.prepare(
+      `
+        insert into menu_variant (
+          id, menu_item_id, name, price_cents, available, position
+        )
+        values (@id, @menuItemId, @name, @priceCents, @available, @position)
+      `,
+    ).run({
+      id,
+      menuItemId: body.menuItemId,
+      name: body.name,
+      priceCents: body.priceCents,
+      available: body.available ? 1 : 0,
+      position: body.position,
+    });
+
+    const variant = db
+      .prepare<{ id: string }, VariantRow>("select * from menu_variant where id = @id")
+      .get({ id });
 
     revalidatePath("/menu");
     revalidatePath("/admin");
     revalidatePath("/admin/menu");
 
     return NextResponse.json(
-      { variant: menuVariantRowSchema.parse(data) },
+      { variant: variant ? mapVariant(variant) : null },
       { status: 201 },
     );
   } catch (error) {

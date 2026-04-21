@@ -120,8 +120,8 @@ export function DashboardOverview() {
                 manual con permisos server-side.
               </div>
               <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
-                Auth staff con Supabase SSR, middleware y chequeo de rol/permisos
-                desde el servidor.
+                Auth staff local con cookie httpOnly, middleware y chequeo de
+                rol/permisos desde el servidor.
               </div>
               <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
                 Migración inicial, seed de roles del sistema y primer admin listos

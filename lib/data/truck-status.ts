@@ -1,10 +1,26 @@
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db/client";
 import type { OpeningHours, TruckConfig, TruckStatus } from "@/lib/types/domain";
 import { formatTimeWindow, formatWeekday } from "@/lib/utils/format";
-import {
-  openingHourRowSchema,
-  truckConfigRowSchema,
-} from "@/lib/validators/hours";
+
+type TruckConfigRow = {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  primary_color: string;
+  timezone: string;
+  tip_defaults_json: string;
+  beep_sound_id: string;
+  paused_manual_at: string | null;
+  paused_reason: string | null;
+};
+
+type OpeningHoursRow = {
+  id: string;
+  weekday: number;
+  opens_at: string | null;
+  closes_at: string | null;
+  closed: number;
+};
 
 function getLocalizedNow(timezone: string) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -98,54 +114,39 @@ export function buildTruckStatus(
 }
 
 export async function getTruckConfig() {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("truck_config")
-    .select("*")
-    .limit(1)
-    .maybeSingle();
+  const db = getDb();
+  const row = db.prepare<[], TruckConfigRow>("select * from truck_config limit 1").get();
 
-  if (error) {
-    throw new Error(error.message);
+  if (!row) {
+    throw new Error("No hay configuración del truck. Corré npm run seed.");
   }
-
-  if (!data) {
-    throw new Error("No hay configuración del truck");
-  }
-
-  const parsed = truckConfigRowSchema.parse(data);
 
   return {
-    id: parsed.id,
-    name: parsed.name,
-    logoUrl: parsed.logo_url,
-    primaryColor: parsed.primary_color,
-    timezone: parsed.timezone,
-    mpAccessTokenEncrypted: parsed.mp_access_token_encrypted,
-    tipDefaultsJson: parsed.tip_defaults_json,
-    beepSoundId: parsed.beep_sound_id,
-    pausedManualAt: parsed.paused_manual_at,
-    pausedReason: parsed.paused_reason,
+    id: row.id,
+    name: row.name,
+    logoUrl: row.logo_url,
+    primaryColor: row.primary_color,
+    timezone: row.timezone,
+    mpAccessTokenEncrypted: null,
+    tipDefaultsJson: JSON.parse(row.tip_defaults_json) as number[],
+    beepSoundId: row.beep_sound_id,
+    pausedManualAt: row.paused_manual_at,
+    pausedReason: row.paused_reason,
   } satisfies TruckConfig;
 }
 
 export async function getOpeningHours() {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("opening_hours")
-    .select("*")
-    .order("weekday", { ascending: true });
+  const db = getDb();
+  const rows = db
+    .prepare<[], OpeningHoursRow>("select * from opening_hours order by weekday asc")
+    .all();
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return openingHourRowSchema.array().parse(data).map((entry) => ({
+  return rows.map((entry) => ({
     id: entry.id,
     weekday: entry.weekday,
     opensAt: entry.opens_at,
     closesAt: entry.closes_at,
-    closed: entry.closed,
+    closed: Boolean(entry.closed),
   })) satisfies OpeningHours[];
 }
 

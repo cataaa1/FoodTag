@@ -1,131 +1,140 @@
 import { config as loadEnv } from "dotenv";
-import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 
-import { SYSTEM_ROLES } from "../lib/constants/permissions";
+import { hashPassword } from "../lib/auth/password";
 import { getServerEnv } from "../lib/config/env";
+import { SYSTEM_ROLES } from "../lib/constants/permissions";
+import { getDb } from "../lib/db/client";
+import { migrateDb } from "../lib/db/migrate";
 
 loadEnv({ path: ".env.local" });
 
-async function main() {
-  const env = getServerEnv();
-  const supabase = createClient(
-    env.NEXT_PUBLIC_SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    },
-  );
+function upsertRole(name: string, permissions: readonly string[]) {
+  const db = getDb();
+  const existing = db
+    .prepare<{ name: string }, { id: string }>("select id from role where name = @name")
+    .get({ name });
+  const id = existing?.id ?? randomUUID();
 
-  const seedRoles = Object.entries(SYSTEM_ROLES).map(([name, permissions]) => ({
+  db.prepare(
+    `
+      insert into role (id, name, is_system, permissions_json)
+      values (@id, @name, 1, @permissionsJson)
+      on conflict(name) do update set
+        is_system = excluded.is_system,
+        permissions_json = excluded.permissions_json
+    `,
+  ).run({
+    id,
     name,
-    is_system: true,
-    permissions_json: permissions,
-  }));
+    permissionsJson: JSON.stringify(permissions),
+  });
 
-  const { error: roleError } = await supabase
-    .from("role")
-    .upsert(seedRoles, { onConflict: "name" });
+  return id;
+}
 
-  if (roleError) {
-    throw roleError;
+function seedTruckConfig() {
+  const db = getDb();
+  const existing = db
+    .prepare<[], { id: string }>("select id from truck_config limit 1")
+    .get();
+
+  if (existing) {
+    return;
   }
 
-  const { data: adminRole, error: adminRoleError } = await supabase
-    .from("role")
-    .select("id")
-    .eq("name", "admin")
-    .single();
+  db.prepare(
+    `
+      insert into truck_config (
+        id, name, primary_color, timezone, tip_defaults_json, beep_sound_id
+      )
+      values (@id, @name, @primaryColor, @timezone, @tipDefaultsJson, @beepSoundId)
+    `,
+  ).run({
+    id: randomUUID(),
+    name: "FoodTag Truck",
+    primaryColor: "#F97316",
+    timezone: "America/Argentina/Buenos_Aires",
+    tipDefaultsJson: JSON.stringify([0, 5, 10, 15]),
+    beepSoundId: "classic",
+  });
+}
 
-  if (adminRoleError) {
-    throw adminRoleError;
-  }
-
-  const { data: userData, error: userError } =
-    await supabase.auth.admin.createUser({
-      email: env.SEED_ADMIN_EMAIL ?? "admin@foodtag.ar",
-      password: env.SEED_ADMIN_PASSWORD ?? "ChangeMe123!",
-      email_confirm: true,
-      user_metadata: {
-        full_name: env.SEED_ADMIN_FULL_NAME ?? "Admin FoodTag",
-      },
-    });
-
-  if (userError && !userError.message.toLowerCase().includes("already")) {
-    throw userError;
-  }
-
-  const adminEmail = env.SEED_ADMIN_EMAIL ?? "admin@foodtag.ar";
-  const { data: usersPage, error: listUsersError } = await supabase.auth.admin.listUsers();
-
-  if (listUsersError) {
-    throw listUsersError;
-  }
-
-  const adminUser =
-    userData.user ??
-    usersPage.users.find((user) => user.email?.toLowerCase() === adminEmail.toLowerCase());
-
-  if (!adminUser) {
-    throw new Error("No se pudo localizar el admin inicial");
-  }
-
-  const { error: staffUserError } = await supabase.from("staff_user").upsert(
-    {
-      id: adminUser.id,
-      email: adminEmail,
-      full_name: env.SEED_ADMIN_FULL_NAME ?? "Admin FoodTag",
-      role_id: adminRole.id,
-      active: true,
-    },
-    { onConflict: "id" },
-  );
-
-  if (staffUserError) {
-    throw staffUserError;
-  }
-
-  const { data: existingConfig } = await supabase
-    .from("truck_config")
-    .select("id")
-    .limit(1)
-    .maybeSingle();
-
-  if (!existingConfig) {
-    const { error: configError } = await supabase.from("truck_config").insert({
-      name: "FoodTag Truck",
-      primary_color: "#F97316",
-      timezone: "America/Argentina/Buenos_Aires",
-      tip_defaults_json: [0, 5, 10, 15],
-      beep_sound_id: "classic",
-    });
-
-    if (configError) {
-      throw configError;
-    }
-  }
-
-  const defaultHours = [
-    { weekday: 0, opens_at: null, closes_at: null, closed: true },
-    { weekday: 1, opens_at: "12:00:00", closes_at: "23:00:00", closed: false },
-    { weekday: 2, opens_at: "12:00:00", closes_at: "23:00:00", closed: false },
-    { weekday: 3, opens_at: "12:00:00", closes_at: "23:00:00", closed: false },
-    { weekday: 4, opens_at: "12:00:00", closes_at: "23:30:00", closed: false },
-    { weekday: 5, opens_at: "12:00:00", closes_at: "23:59:00", closed: false },
-    { weekday: 6, opens_at: "18:00:00", closes_at: "23:59:00", closed: false },
+function seedOpeningHours() {
+  const db = getDb();
+  const hours = [
+    { weekday: 0, opensAt: null, closesAt: null, closed: 1 },
+    { weekday: 1, opensAt: "12:00:00", closesAt: "23:00:00", closed: 0 },
+    { weekday: 2, opensAt: "12:00:00", closesAt: "23:00:00", closed: 0 },
+    { weekday: 3, opensAt: "12:00:00", closesAt: "23:00:00", closed: 0 },
+    { weekday: 4, opensAt: "12:00:00", closesAt: "23:30:00", closed: 0 },
+    { weekday: 5, opensAt: "12:00:00", closesAt: "23:59:00", closed: 0 },
+    { weekday: 6, opensAt: "18:00:00", closesAt: "23:59:00", closed: 0 },
   ];
 
-  const { error: hoursError } = await supabase
-    .from("opening_hours")
-    .upsert(defaultHours, { onConflict: "weekday" });
+  const statement = db.prepare(
+    `
+      insert into opening_hours (id, weekday, opens_at, closes_at, closed)
+      values (@id, @weekday, @opensAt, @closesAt, @closed)
+      on conflict(weekday) do update set
+        opens_at = excluded.opens_at,
+        closes_at = excluded.closes_at,
+        closed = excluded.closed
+    `,
+  );
 
-  if (hoursError) {
-    throw hoursError;
-  }
+  const transaction = db.transaction(() => {
+    hours.forEach((entry) => {
+      statement.run({ id: randomUUID(), ...entry });
+    });
+  });
 
-  console.log("Seed completado con éxito");
+  transaction();
+}
+
+function seedAdmin(adminRoleId: string) {
+  const env = getServerEnv();
+  const db = getDb();
+  const email = env.SEED_ADMIN_EMAIL ?? "admin@foodtag.ar";
+  const password = env.SEED_ADMIN_PASSWORD ?? "ChangeMe123!";
+  const fullName = env.SEED_ADMIN_FULL_NAME ?? "Admin FoodTag";
+  const existing = db
+    .prepare<{ email: string }, { id: string }>(
+      "select id from staff_user where email = @email",
+    )
+    .get({ email });
+
+  db.prepare(
+    `
+      insert into staff_user (
+        id, email, full_name, password_hash, role_id, active
+      )
+      values (@id, @email, @fullName, @passwordHash, @roleId, 1)
+      on conflict(email) do update set
+        full_name = excluded.full_name,
+        role_id = excluded.role_id,
+        active = 1
+    `,
+  ).run({
+    id: existing?.id ?? randomUUID(),
+    email,
+    fullName,
+    passwordHash: hashPassword(password),
+    roleId: adminRoleId,
+  });
+}
+
+async function main() {
+  migrateDb();
+
+  const adminRoleId = upsertRole("admin", SYSTEM_ROLES.admin);
+  upsertRole("cajero", SYSTEM_ROLES.cajero);
+  upsertRole("cocina", SYSTEM_ROLES.cocina);
+  seedTruckConfig();
+  seedOpeningHours();
+  seedAdmin(adminRoleId);
+
+  console.log("SQLite migrado y seed completado con éxito");
 }
 
 main().catch((error) => {

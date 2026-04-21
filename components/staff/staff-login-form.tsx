@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
   const [email, setEmail] = useState("");
@@ -23,14 +22,19 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
     setError(null);
 
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch("/api/staff/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (signInError) {
-        throw signInError;
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        throw new Error(payload?.error?.message ?? "No se pudo iniciar sesión");
       }
 
       router.push(nextPath ?? "/admin");
@@ -58,7 +62,7 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
               Ingreso del staff
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Accedé al panel interno de FoodTag con tu usuario de Supabase.
+              Accedé al panel interno de FoodTag con usuario local.
             </p>
           </div>
         </CardHeader>

@@ -5,7 +5,7 @@ import { handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
 import { getOpeningHours } from "@/lib/data/truck-status";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db/client";
 import { hoursPatchSchema } from "@/lib/validators/hours";
 
 export async function GET() {
@@ -23,25 +23,29 @@ export async function PATCH(request: Request) {
     await requireStaffPermission("hours.write");
 
     const body = await parseJsonBody(request, hoursPatchSchema);
-    const supabase = getSupabaseAdmin();
-
-    const updates = body.hours.map((entry) =>
-      supabase
-        .from("opening_hours")
-        .update({
-          opens_at: entry.opensAt,
-          closes_at: entry.closesAt,
-          closed: entry.closed,
-        })
-        .eq("weekday", entry.weekday),
+    const db = getDb();
+    const statement = db.prepare(
+      `
+        update opening_hours set
+          opens_at = @opensAt,
+          closes_at = @closesAt,
+          closed = @closed
+        where weekday = @weekday
+      `,
     );
 
-    const results = await Promise.all(updates);
-    const failed = results.find((result) => result.error);
+    const transaction = db.transaction(() => {
+      body.hours.forEach((entry) => {
+        statement.run({
+          weekday: entry.weekday,
+          opensAt: entry.opensAt,
+          closesAt: entry.closesAt,
+          closed: entry.closed ? 1 : 0,
+        });
+      });
+    });
 
-    if (failed?.error) {
-      throw failed.error;
-    }
+    transaction();
 
     revalidatePath("/menu");
     revalidatePath("/admin");

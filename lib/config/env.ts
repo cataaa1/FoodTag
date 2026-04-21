@@ -1,16 +1,13 @@
 import { z } from "zod";
 
 const clientEnvSchema = z.object({
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
-  NEXT_PUBLIC_APP_URL: z.string().url(),
+  NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
 });
 
 const serverEnvSchema = clientEnvSchema.extend({
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  SQLITE_DB_PATH: z.string().min(1).default("./data/foodtag.sqlite"),
   CUSTOMER_JWT_SECRET: z.string().min(32),
-  MP_ACCESS_TOKEN: z.string().optional().default(""),
-  MP_WEBHOOK_SECRET: z.string().optional().default(""),
+  STAFF_SESSION_SECRET: z.string().min(32),
   SEED_ADMIN_EMAIL: z.string().email().optional(),
   SEED_ADMIN_PASSWORD: z.string().min(8).optional(),
   SEED_ADMIN_FULL_NAME: z.string().min(2).optional(),
@@ -28,8 +25,6 @@ export function getClientEnv(): ClientEnv {
   }
 
   cachedClientEnv = clientEnvSchema.parse({
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   });
 
@@ -42,13 +37,10 @@ export function getServerEnv(): ServerEnv {
   }
 
   cachedServerEnv = serverEnvSchema.parse({
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    SQLITE_DB_PATH: process.env.SQLITE_DB_PATH,
     CUSTOMER_JWT_SECRET: process.env.CUSTOMER_JWT_SECRET,
-    MP_ACCESS_TOKEN: process.env.MP_ACCESS_TOKEN,
-    MP_WEBHOOK_SECRET: process.env.MP_WEBHOOK_SECRET,
+    STAFF_SESSION_SECRET: process.env.STAFF_SESSION_SECRET,
     SEED_ADMIN_EMAIL: process.env.SEED_ADMIN_EMAIL,
     SEED_ADMIN_PASSWORD: process.env.SEED_ADMIN_PASSWORD,
     SEED_ADMIN_FULL_NAME: process.env.SEED_ADMIN_FULL_NAME,

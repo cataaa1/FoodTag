@@ -1,26 +1,49 @@
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db/client";
 import type { MenuCategoryWithItems, MenuItem, MenuVariant } from "@/lib/types/domain";
-import {
-  categoryRowSchema,
-  menuItemRowSchema,
-  menuVariantRowSchema,
-} from "@/lib/validators/menu";
 
-function mapVariant(row: ReturnType<typeof menuVariantRowSchema.parse>): MenuVariant {
+type CategoryRow = {
+  id: string;
+  name: string;
+  position: number;
+  visible: number;
+  created_at: string;
+};
+
+type MenuItemRow = {
+  id: string;
+  category_id: string;
+  name: string;
+  description: string | null;
+  price_cents: number;
+  photo_url: string | null;
+  available: number;
+  has_variants: number;
+  position: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type MenuVariantRow = {
+  id: string;
+  menu_item_id: string;
+  name: string;
+  price_cents: number;
+  available: number;
+  position: number;
+};
+
+export function mapVariant(row: MenuVariantRow): MenuVariant {
   return {
     id: row.id,
     menuItemId: row.menu_item_id,
     name: row.name,
     priceCents: row.price_cents,
-    available: row.available,
+    available: Boolean(row.available),
     position: row.position,
   };
 }
 
-function mapMenuItem(
-  row: ReturnType<typeof menuItemRowSchema.parse>,
-  variants: MenuVariant[],
-): MenuItem {
+export function mapMenuItem(row: MenuItemRow, variants: MenuVariant[]): MenuItem {
   return {
     id: row.id,
     categoryId: row.category_id,
@@ -28,8 +51,8 @@ function mapMenuItem(
     description: row.description,
     priceCents: row.price_cents,
     photoUrl: row.photo_url,
-    available: row.available,
-    hasVariants: row.has_variants,
+    available: Boolean(row.available),
+    hasVariants: Boolean(row.has_variants),
     position: row.position,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -38,51 +61,38 @@ function mapMenuItem(
 }
 
 export async function getMenuData() {
-  const supabase = getSupabaseAdmin();
-  const [{ data: categoriesData, error: categoriesError }, { data: itemsData, error: itemsError }, { data: variantsData, error: variantsError }] =
-    await Promise.all([
-      supabase.from("category").select("*").order("position", { ascending: true }),
-      supabase.from("menu_item").select("*").order("position", { ascending: true }),
-      supabase.from("menu_variant").select("*").order("position", { ascending: true }),
-    ]);
+  const db = getDb();
+  const categories = db
+    .prepare<[], CategoryRow>(
+      "select * from category where visible = 1 order by position asc",
+    )
+    .all();
+  const items = db
+    .prepare<[], MenuItemRow>("select * from menu_item order by position asc")
+    .all();
+  const variants = db
+    .prepare<[], MenuVariantRow>("select * from menu_variant order by position asc")
+    .all();
 
-  if (categoriesError) {
-    throw new Error(categoriesError.message);
-  }
+  return categories.map((category) => {
+    const categoryItems = items
+      .filter((item) => item.category_id === category.id)
+      .map((item) =>
+        mapMenuItem(
+          item,
+          variants
+            .filter((variant) => variant.menu_item_id === item.id)
+            .map(mapVariant),
+        ),
+      );
 
-  if (itemsError) {
-    throw new Error(itemsError.message);
-  }
-
-  if (variantsError) {
-    throw new Error(variantsError.message);
-  }
-
-  const categories = categoryRowSchema.array().parse(categoriesData);
-  const items = menuItemRowSchema.array().parse(itemsData);
-  const variants = menuVariantRowSchema.array().parse(variantsData);
-
-  return categories
-    .filter((category) => category.visible)
-    .map((category) => {
-      const categoryItems = items
-        .filter((item) => item.category_id === category.id)
-        .map((item) =>
-          mapMenuItem(
-            item,
-            variants
-              .filter((variant) => variant.menu_item_id === item.id)
-              .map(mapVariant),
-          ),
-        );
-
-      return {
-        id: category.id,
-        name: category.name,
-        position: category.position,
-        visible: category.visible,
-        createdAt: category.created_at,
-        items: categoryItems,
-      } satisfies MenuCategoryWithItems;
-    });
+    return {
+      id: category.id,
+      name: category.name,
+      position: category.position,
+      visible: Boolean(category.visible),
+      createdAt: category.created_at,
+      items: categoryItems,
+    } satisfies MenuCategoryWithItems;
+  });
 }
