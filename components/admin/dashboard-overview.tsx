@@ -175,7 +175,7 @@ export function DashboardOverview() {
             Accesos rápidos
           </div>
           <div className="space-y-2">
-            <QuickAction color="#3b82f6" href="/staff/login" icon="📋" label="Ir al Kanban" />
+            <QuickAction color="#3b82f6" href="/staff/kanban" icon="📋" label="Ir al Kanban" />
             <QuickAction color="#ef4444" href="/admin/hours" icon="⏸" label="Pausar truck" />
             <QuickAction color="#f97316" href="/admin/menu" icon="🍔" label="Gestionar menú" />
           </div>

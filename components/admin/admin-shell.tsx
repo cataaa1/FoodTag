@@ -1,16 +1,25 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { fetchJson } from "@/lib/utils/http";
+
+type TruckIdentity = {
+  truckName: string;
+  brandIcon: string;
+  logoUrl: string | null;
+};
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: "📊" },
   { href: "/admin/menu", label: "Gestión de menú", icon: "🍔" },
   { href: "/admin/hours", label: "Horarios", icon: "🕐" },
   { href: "/admin/users", label: "Usuarios y roles", icon: "👥" },
+  { href: "/admin/settings", label: "Configuración", icon: "⚙️" },
 ] as const;
 
 export function AdminShell({
@@ -26,6 +35,11 @@ export function AdminShell({
 }) {
   const pathname = usePathname();
   const [darkMode, setDarkMode] = useState(false);
+  const identityQuery = useQuery({
+    queryKey: ["truck-status"],
+    queryFn: () => fetchJson<TruckIdentity>("/api/customer/truck-status"),
+  });
+  const identity = identityQuery.data;
 
   useEffect(() => {
     document.body.classList.toggle("dark", darkMode);
@@ -35,12 +49,15 @@ export function AdminShell({
     <div className="min-h-screen bg-[#fafafa] text-[#111] dark:bg-[#111] dark:text-[#f5f5f5]">
       <aside className="fixed inset-y-0 left-0 z-10 hidden w-[220px] flex-col border-r border-[#e8e8e8] bg-white py-5 transition lg:flex dark:border-white/10 dark:bg-[#1a1a1a]">
         <div className="mb-3 flex items-center gap-2.5 border-b border-[#e8e8e8] px-5 pb-5 dark:border-white/10">
-          <div className="flex size-[38px] items-center justify-center rounded-[10px] bg-[#f97316] text-xl">
-            🚚
-          </div>
+          <BrandMark
+            brandIcon={identity?.brandIcon ?? "🚚"}
+            logoUrl={identity?.logoUrl ?? null}
+          />
           <div>
-            <p className="text-base font-black tracking-[-0.3px]">FoodTag</p>
-            <p className="mt-px text-[11px] text-[#999]">Admin · El Smash</p>
+            <p className="text-base font-black tracking-[-0.3px]">
+              {identity?.truckName ?? "FoodTag"}
+            </p>
+            <p className="mt-px text-[11px] text-[#999]">FoodTag · Admin</p>
           </div>
         </div>
 
@@ -68,7 +85,7 @@ export function AdminShell({
         <div className="mx-4 my-3 h-px bg-[#e8e8e8] dark:bg-white/10" />
         <Link
           className="flex items-center gap-2.5 px-5 py-2.5 text-[13px] font-bold text-[#555] transition hover:bg-[#f5f5f5] hover:text-[#111] dark:text-white/45 dark:hover:bg-white/5 dark:hover:text-white"
-          href="/staff/login"
+          href="/staff/kanban"
         >
           <span className="w-[22px] text-center text-base">📋</span>
           Ir al Kanban
@@ -123,6 +140,25 @@ export function AdminShell({
         </header>
         <main className="p-7">{children}</main>
       </div>
+    </div>
+  );
+}
+
+function BrandMark({
+  brandIcon,
+  logoUrl,
+}: {
+  brandIcon: string;
+  logoUrl: string | null;
+}) {
+  return (
+    <div className="flex size-[38px] shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#f97316] text-xl text-white">
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img alt="" className="size-full object-cover" src={logoUrl} />
+      ) : (
+        brandIcon
+      )}
     </div>
   );
 }

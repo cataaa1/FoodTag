@@ -522,8 +522,17 @@ function MenuItemCard({
       className="rounded-xl border border-[#e8e8e8] bg-white p-4 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]"
       style={{ opacity: item.available ? 1 : 0.6 }}
     >
-      <div className="mb-3 flex h-[100px] w-full items-center justify-center rounded-lg bg-[#f2f2f2] text-center text-xs font-semibold text-[#999] dark:bg-[#242424]">
-        foto del ítem
+      <div className="mb-3 flex h-[100px] w-full items-center justify-center overflow-hidden rounded-lg bg-[#f2f2f2] text-center text-xs font-semibold text-[#999] dark:bg-[#242424]">
+        {item.photo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            alt={item.name}
+            className="size-full object-cover"
+            src={item.photo_url}
+          />
+        ) : (
+          "foto del ítem"
+        )}
       </div>
       <div className="mb-1 flex items-start justify-between gap-3">
         <h2 className="text-sm font-bold text-[#111] dark:text-[#f5f5f5]">{item.name}</h2>
@@ -550,8 +559,12 @@ function MenuItemCard({
               <span
                 className="rounded-[5px] bg-[#fff0e6] px-2 py-0.5 text-[10px] font-semibold text-[#f97316]"
                 key={variant.id ?? variant.name}
+                title={`${variant.name} · ${formatPrice(variant.price_cents)}${
+                  variant.available ? "" : " · agotada"
+                }`}
               >
-                {variant.name}
+                {variant.name} · {formatPrice(variant.price_cents)}
+                {!variant.available ? " · agotada" : ""}
               </span>
             ))
           ) : (
@@ -560,7 +573,22 @@ function MenuItemCard({
         </div>
       ) : null}
       {item.modifiers.length ? (
-        <div className="mb-2 text-[11px] text-[#999]">Con modificaciones</div>
+        <div className="mb-2">
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.5px] text-[#999]">
+            Modificaciones
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {item.modifiers.map((modifier) => (
+              <span
+                className="rounded-[5px] bg-[#f2f2f2] px-2 py-0.5 text-[10px] font-semibold text-[#555] dark:bg-[#242424] dark:text-[#a0a0a0]"
+                key={modifier.id ?? modifier.label}
+              >
+                {modifier.label}
+                {modifier.default_checked ? " · por defecto" : ""}
+              </span>
+            ))}
+          </div>
+        </div>
       ) : null}
       <div className="flex items-center justify-between">
         <span

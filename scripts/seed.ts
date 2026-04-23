@@ -39,9 +39,10 @@ function seedTruckConfig() {
     .get();
 
   if (existing) {
-    return;
+    return existing.id;
   }
 
+  const id = randomUUID();
   db.prepare(
     `
       insert into truck_config (
@@ -50,12 +51,44 @@ function seedTruckConfig() {
       values (@id, @name, @primaryColor, @timezone, @tipDefaultsJson, @beepSoundId)
     `,
   ).run({
-    id: randomUUID(),
-    name: "FoodTag Truck",
+    id,
+    name: "El Smash del Barrio",
     primaryColor: "#F97316",
     timezone: "America/Argentina/Buenos_Aires",
     tipDefaultsJson: JSON.stringify([0, 5, 10, 15]),
     beepSoundId: "classic",
+  });
+
+  return id;
+}
+
+function seedTruckProfile(truckConfigId: string) {
+  const db = getDb();
+  const existing = db
+    .prepare<{ truckConfigId: string }, { id: string }>(
+      "select id from truck_profile where truck_config_id = @truckConfigId",
+    )
+    .get({ truckConfigId });
+
+  if (existing) {
+    return;
+  }
+
+  db.prepare(
+    `
+      insert into truck_profile (
+        id, truck_config_id, address, public_tagline, instagram_handle
+      )
+      values (
+        @id, @truckConfigId, @address, @publicTagline, @instagramHandle
+      )
+    `,
+  ).run({
+    id: randomUUID(),
+    truckConfigId,
+    address: "Av. Corrientes 1500",
+    publicTagline: "Food Truck · Av. Corrientes 1500",
+    instagramHandle: "@foodtag",
   });
 }
 
@@ -482,7 +515,8 @@ async function main() {
   const adminRoleId = upsertRole("admin", SYSTEM_ROLES.admin);
   upsertRole("cajero", SYSTEM_ROLES.cajero);
   upsertRole("cocina", SYSTEM_ROLES.cocina);
-  seedTruckConfig();
+  const truckConfigId = seedTruckConfig();
+  seedTruckProfile(truckConfigId);
   seedOpeningHours();
   seedAdmin(adminRoleId);
   seedDemoMenu();

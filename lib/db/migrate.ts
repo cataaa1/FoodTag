@@ -10,8 +10,30 @@ export function migrateDb() {
     .filter((file) => file.endsWith(".sql"))
     .sort();
 
+  db.exec(`
+    create table if not exists _migrations (
+      filename text primary key,
+      applied_at text not null default (datetime('now'))
+    )
+  `);
+
   migrationFiles.forEach((file) => {
+    const applied = db
+      .prepare<{ filename: string }, { filename: string }>(
+        "select filename from _migrations where filename = @filename",
+      )
+      .get({ filename: file });
+
+    if (applied) {
+      return;
+    }
+
     const migration = readFileSync(path.join(migrationsPath, file), "utf8");
-    db.exec(migration);
+    const transaction = db.transaction(() => {
+      db.exec(migration);
+      db.prepare("insert into _migrations (filename) values (?)").run(file);
+    });
+
+    transaction();
   });
 }

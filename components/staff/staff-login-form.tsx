@@ -1,7 +1,16 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+
+import { fetchJson } from "@/lib/utils/http";
+
+type TruckIdentity = {
+  truckName: string;
+  brandIcon: string;
+  logoUrl: string | null;
+};
 
 export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
   const [email, setEmail] = useState("admin@foodtag.ar");
@@ -9,6 +18,11 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const identityQuery = useQuery({
+    queryKey: ["truck-status"],
+    queryFn: () => fetchJson<TruckIdentity>("/api/customer/truck-status"),
+  });
+  const identity = identityQuery.data;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -29,7 +43,7 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
         throw new Error(payload?.error?.message ?? "No se pudo iniciar sesión");
       }
 
-      router.push(nextPath ?? "/admin");
+      router.push(nextPath ?? "/staff/kanban");
       router.refresh();
     } catch (submitError) {
       setError(
@@ -44,10 +58,13 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
     <main className="flex min-h-screen items-center justify-center bg-[#0f0f0f] px-6 py-12 text-[#f5f5f5]">
       <div className="w-full max-w-[380px]">
         <header className="mb-9 text-center">
-          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-[18px] bg-[#f97316] text-3xl shadow-[0_4px_24px_rgba(249,115,22,0.30)]">
-            🚚
-          </div>
-          <h1 className="text-2xl font-black tracking-[-0.5px]">FoodTag Staff</h1>
+          <BrandMark
+            brandIcon={identity?.brandIcon ?? "🚚"}
+            logoUrl={identity?.logoUrl ?? null}
+          />
+          <h1 className="text-2xl font-black tracking-[-0.5px]">
+            {identity?.truckName ?? "FoodTag"} Staff
+          </h1>
           <p className="mt-1 text-[13px] text-[#606060]">Panel de operaciones</p>
         </header>
 
@@ -100,5 +117,24 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
         </form>
       </div>
     </main>
+  );
+}
+
+function BrandMark({
+  brandIcon,
+  logoUrl,
+}: {
+  brandIcon: string;
+  logoUrl: string | null;
+}) {
+  return (
+    <div className="mx-auto mb-4 flex size-16 items-center justify-center overflow-hidden rounded-[18px] bg-[#f97316] text-3xl text-white shadow-[0_4px_24px_rgba(249,115,22,0.30)]">
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img alt="" className="size-full object-cover" src={logoUrl} />
+      ) : (
+        brandIcon
+      )}
+    </div>
   );
 }

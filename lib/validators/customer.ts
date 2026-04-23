@@ -14,12 +14,12 @@ export const orderItemInputSchema = z.object({
   menuItemId: z.string().uuid(),
   menuVariantId: z.string().uuid().nullable(),
   quantity: z.number().int().min(1).max(99),
-  notes: z.string().trim().max(200).nullable().optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
 });
 
 export const createOrderSchema = z.object({
   items: z.array(orderItemInputSchema).min(1, "El carrito está vacío").max(20),
-  tipCents: z.number().int().min(0).max(50_000).default(0),
+  tipCents: z.number().int().min(0).max(9_999_999).default(0),
 });
 
 export const customerOrderIdParamSchema = z.object({

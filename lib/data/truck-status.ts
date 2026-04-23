@@ -6,12 +6,21 @@ type TruckConfigRow = {
   id: string;
   name: string;
   logo_url: string | null;
+  brand_icon: string;
   primary_color: string;
   timezone: string;
   tip_defaults_json: string;
   beep_sound_id: string;
   paused_manual_at: string | null;
   paused_reason: string | null;
+};
+
+type TruckProfileRow = {
+  address: string;
+  hero_image_url: string | null;
+  public_tagline: string;
+  instagram_handle: string | null;
+  allow_order_modifications: number;
 };
 
 type OpeningHoursRow = {
@@ -105,7 +114,13 @@ export function buildTruckStatus(
     paused: isManuallyPaused,
     reason: config.pausedReason,
     truckName: config.name,
+    address: config.address,
+    heroImageUrl: config.heroImageUrl,
+    publicTagline: config.publicTagline,
+    brandIcon: config.brandIcon,
+    logoUrl: config.logoUrl,
     primaryColor: config.primaryColor,
+    allowOrderModifications: config.allowOrderModifications,
     todayHoursLabel:
       todaysHours && !todaysHours.closed
         ? formatTimeWindow(todaysHours.opensAt, todaysHours.closesAt)
@@ -121,9 +136,28 @@ export async function getTruckConfig() {
     throw new Error("No hay configuración del truck. Corré npm run seed.");
   }
 
+  const profile = db
+    .prepare<{ truckConfigId: string }, TruckProfileRow>(
+      `
+        select address, hero_image_url, public_tagline, instagram_handle,
+          allow_order_modifications
+        from truck_profile
+        where truck_config_id = @truckConfigId
+      `,
+    )
+    .get({ truckConfigId: row.id });
+
   return {
     id: row.id,
     name: row.name,
+    address: profile?.address ?? "Av. Corrientes 1500",
+    heroImageUrl: profile?.hero_image_url ?? null,
+    publicTagline: profile?.public_tagline ?? "Food Truck · Av. Corrientes 1500",
+    instagramHandle: profile?.instagram_handle ?? null,
+    brandIcon: row.brand_icon,
+    allowOrderModifications: profile
+      ? Boolean(profile.allow_order_modifications)
+      : true,
     logoUrl: row.logo_url,
     primaryColor: row.primary_color,
     timezone: row.timezone,

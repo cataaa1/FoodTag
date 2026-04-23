@@ -24,7 +24,7 @@ export async function proxy(request: NextRequest) {
     await verifyStaffSessionToken(token);
 
     if (isLoginRoute) {
-      return NextResponse.redirect(new URL("/admin", request.url));
+      return NextResponse.redirect(new URL("/staff/kanban", request.url));
     }
 
     return NextResponse.next();

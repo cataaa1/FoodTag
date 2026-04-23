@@ -1,11 +1,12 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Search, ShoppingCart, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { getCartTotals, useCartStore } from "@/components/customer/cart-store";
-import { PhoneShell, PrimaryPhoneButton, StatusBar } from "@/components/customer/phone-shell";
+import { PhoneShell, PrimaryPhoneButton } from "@/components/customer/phone-shell";
 import { formatCurrency } from "@/lib/utils/format";
 import { fetchJson } from "@/lib/utils/http";
 
@@ -15,6 +16,11 @@ type TruckStatus = {
   paused: boolean;
   reason: string | null;
   truckName: string;
+  address: string;
+  heroImageUrl: string | null;
+  logoUrl: string | null;
+  brandIcon: string;
+  publicTagline: string;
   todayHoursLabel: string;
 };
 
@@ -31,6 +37,7 @@ type MenuItem = {
   name: string;
   description: string | null;
   priceCents: number;
+  photoUrl: string | null;
   available: boolean;
   hasVariants: boolean;
   variants: MenuVariant[];
@@ -40,21 +47,68 @@ type MenuCategory = { id: string; name: string; items: MenuItem[] };
 type SessionDraft = { name: string; phone: string };
 
 const EMPTY_CATEGORIES: MenuCategory[] = [];
+const MENU_ENTRY_SESSION_KEY = "foodtag-menu-entered";
 const ITEM_EMOJIS = ["🍔", "🍗", "🥓", "🍟", "🧀", "🥤", "💧", "🍫", "🍪"] as const;
 
 function itemEmoji(index: number) {
   return ITEM_EMOJIS[index % ITEM_EMOJIS.length];
 }
 
+function readMenuEntrySession() {
+  if (typeof window === "undefined") return false;
+
+  try {
+    return window.sessionStorage.getItem(MENU_ENTRY_SESSION_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function rememberMenuEntrySession() {
+  try {
+    window.sessionStorage.setItem(MENU_ENTRY_SESSION_KEY, "true");
+  } catch {
+    // Storage can be unavailable on some mobile browsers; React state still drives the flow.
+  }
+}
+
+function TruckBrandFallback({
+  brandIcon,
+  label,
+  logoUrl,
+}: {
+  brandIcon: string;
+  label: string;
+  logoUrl: string | null;
+}) {
+  if (logoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img alt={label} className="size-20 rounded-[22px] object-cover shadow-[0_10px_26px_rgba(0,0,0,0.25)]" src={logoUrl} />
+    );
+  }
+
+  return (
+    <span className="text-[52px] drop-shadow-[0_4px_12px_rgba(0,0,0,0.30)]">
+      {brandIcon}
+    </span>
+  );
+}
+
 export function MenuScreen() {
   const router = useRouter();
   const [draft, setDraft] = useState<SessionDraft>({ name: "", phone: "" });
+  const [sessionCustomer, setSessionCustomer] = useState<Customer | null>(null);
+  const [hasEnteredMenu, setHasEnteredMenu] = useState(readMenuEntrySession);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [configItem, setConfigItem] = useState<MenuItem | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [selectedModifiers, setSelectedModifiers] = useState<Record<string, boolean>>({});
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const addItem = useCartStore((state) => state.addItem);
+  const decrementItem = useCartStore((state) => state.decrementItem);
   const cartItems = useCartStore((state) => state.items);
   const cartTotals = getCartTotals(cartItems);
 
@@ -75,13 +129,17 @@ export function MenuScreen() {
     mutationFn: (payload: SessionDraft) =>
       fetchJson<{ customer: Customer }>("/api/customer/session", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       }),
-    onSuccess: async (data) => {
+    onSuccess: (data) => {
       setFormError(null);
       setDraft({ name: data.customer.name, phone: data.customer.phone });
-      await sessionQuery.refetch();
+      setSessionCustomer(data.customer);
+      setHasEnteredMenu(true);
+      rememberMenuEntrySession();
+      void sessionQuery.refetch();
     },
     onError: (error) => {
       setFormError(error instanceof Error ? error.message : "No pudimos iniciar sesión");
@@ -89,15 +147,55 @@ export function MenuScreen() {
   });
 
   const categories = menuQuery.data?.categories ?? EMPTY_CATEGORIES;
-  const customer = sessionQuery.data?.customer ?? null;
+  const customer = sessionCustomer ?? sessionQuery.data?.customer ?? null;
+  const truck = statusQuery.data;
+  const showLanding = !customer || !hasEnteredMenu;
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const visibleCategories = useMemo(() => {
+    if (!normalizedSearchQuery) return categories;
+
+    return categories
+      .map((category) => {
+        const categoryMatches = category.name.toLowerCase().includes(normalizedSearchQuery);
+        const items = categoryMatches
+          ? category.items
+          : category.items.filter((item) =>
+              [
+                item.name,
+                item.description ?? "",
+                ...item.variants.map((variant) => variant.name),
+                ...item.modifiers.map((modifier) => modifier.label),
+              ]
+                .join(" ")
+                .toLowerCase()
+                .includes(normalizedSearchQuery),
+            );
+
+        return { ...category, items };
+      })
+      .filter((category) => category.items.length > 0);
+  }, [categories, normalizedSearchQuery]);
   const activeCategory =
-    categories.find((category) => category.id === activeCategoryId) ?? categories[0];
+    visibleCategories.find((category) => category.id === activeCategoryId) ??
+    visibleCategories[0];
 
   useEffect(() => {
-    if (!activeCategoryId && categories[0]) {
-      setActiveCategoryId(categories[0].id);
+    if (!activeCategoryId && visibleCategories[0]) {
+      setActiveCategoryId(visibleCategories[0].id);
     }
-  }, [activeCategoryId, categories]);
+  }, [activeCategoryId, visibleCategories]);
+
+  useEffect(() => {
+    if (!customer || draft.name || draft.phone) return;
+
+    setDraft({ name: customer.name, phone: customer.phone });
+  }, [customer, draft.name, draft.phone]);
+
+  useEffect(() => {
+    if (!sessionQuery.data?.customer || sessionCustomer) return;
+
+    setSessionCustomer(sessionQuery.data.customer);
+  }, [sessionCustomer, sessionQuery.data?.customer]);
 
   const categoryItems = useMemo(() => activeCategory?.items ?? [], [activeCategory]);
 
@@ -109,6 +207,9 @@ export function MenuScreen() {
   function openConfig(item: MenuItem) {
     if (!item.available) return;
     const availableVariants = item.variants.filter((variant) => variant.available);
+
+    if (item.hasVariants && availableVariants.length === 0) return;
+
     const modifierDefaults = Object.fromEntries(
       item.modifiers.map((modifier) => [modifier.id, modifier.defaultChecked]),
     );
@@ -124,18 +225,14 @@ export function MenuScreen() {
   }
 
   function buildModifierNote(item: MenuItem, values: Record<string, boolean>) {
-    const changes = item.modifiers.flatMap((modifier) => {
+    const options = item.modifiers.flatMap((modifier) => {
       const selected = values[modifier.id] ?? modifier.defaultChecked;
 
-      if (selected === modifier.defaultChecked) {
-        return [];
-      }
-
       const normalized = modifier.label.replace(/^con\s+/i, "").toLowerCase();
-      return selected ? [`con ${normalized}`] : [`sin ${normalized}`];
+      return selected ? [modifier.label] : [`Sin ${normalized}`];
     });
 
-    return changes.join(", ") || null;
+    return options.join(", ") || null;
   }
 
   function addMenuItem(
@@ -171,28 +268,50 @@ export function MenuScreen() {
     setConfigItem(null);
   }
 
+  function decrementMenuItem(itemId: string) {
+    const currentItem = [...cartItems]
+      .reverse()
+      .find((entry) => entry.menuItemId === itemId);
+
+    if (currentItem) {
+      decrementItem(currentItem.cartItemId);
+    }
+  }
+
   if (statusQuery.data && !statusQuery.data.isOpen) {
     return <ClosedScreen status={statusQuery.data} />;
   }
 
-  if (!customer) {
+  if (showLanding) {
     return (
       <PhoneShell>
-        <StatusBar />
         <div className="relative h-[200px] shrink-0 overflow-hidden bg-[#1c1009]">
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,#c2410c_0%,#f97316_45%,#fed7aa_100%)]">
-            <span className="text-[52px] drop-shadow-[0_4px_12px_rgba(0,0,0,0.30)]">🚚</span>
-            <span className="text-[11px] font-bold uppercase tracking-[2px] text-white/60">
-              Foto del truck
-            </span>
-          </div>
+          {truck?.heroImageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              alt={truck.truckName}
+              className="absolute inset-0 size-full object-cover"
+              src={truck.heroImageUrl}
+            />
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,#c2410c_0%,#f97316_45%,#fed7aa_100%)]">
+              <TruckBrandFallback
+                brandIcon={truck?.brandIcon ?? "🚚"}
+                label={truck?.truckName ?? "Foodtruck"}
+                logoUrl={truck?.logoUrl ?? null}
+              />
+              <span className="text-[11px] font-bold uppercase tracking-[2px] text-white/60">
+                {truck?.logoUrl ? "Logo del truck" : "Icono del truck"}
+              </span>
+            </div>
+          )}
           <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(to_top,#fff8f1,transparent)]" />
           <div className="absolute inset-x-0 bottom-3 text-center">
             <h1 className="text-[22px] font-black tracking-[-0.5px] text-[#1c1009] drop-shadow-[0_1px_0_rgba(255,255,255,0.5)]">
-              El Smash del Barrio
+              {truck?.truckName ?? "FoodTag"}
             </h1>
             <p className="text-xs font-medium text-[#9a7560]">
-              Food Truck · Av. Corrientes 1500
+              {truck?.publicTagline ?? "Food Truck · Av. Corrientes 1500"}
             </p>
           </div>
         </div>
@@ -201,7 +320,7 @@ export function MenuScreen() {
           <div className="mb-6 flex items-start gap-3 rounded-2xl bg-[#fff1e6] px-[18px] py-4">
             <span className="shrink-0 text-[22px]">👋</span>
             <div>
-              <p className="mb-1 text-sm font-bold">¡Hola! Pedí desde acá</p>
+              <p className="mb-1 text-[14px] font-bold">¡Hola! Pedí desde acá</p>
               <p className="text-[13px] leading-[1.5] text-[#6b4e35]">
                 Te vamos a avisar <strong>en esta pantalla</strong> cuando tu pedido
                 esté listo. No hace falta descargar nada.
@@ -222,7 +341,7 @@ export function MenuScreen() {
                 value={draft.name}
               />
             </PhoneField>
-            <PhoneField label="¿Tu número de WhatsApp?">
+            <PhoneField label="¿Cuál es tu número?">
               <input
                 autoComplete="tel"
                 className="phone-input"
@@ -250,8 +369,8 @@ export function MenuScreen() {
           </form>
         </div>
 
-        <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,#fff8f1_80%,transparent)] px-6 pb-5 pt-3 text-center">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f0ddd0] px-3.5 py-1.5 text-xs font-semibold text-[#6b4e35]">
+        <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,#fff8f1_80%,transparent)] px-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-3 text-center">
+          <span className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-[#f0ddd0] px-3.5 py-1.5 text-xs font-semibold text-[#6b4e35]">
             <span className="size-2 rounded-full bg-[#22c55e]" />
             {statusQuery.data?.todayHoursLabel ?? "Abierto hasta las 23:00"}
           </span>
@@ -262,29 +381,44 @@ export function MenuScreen() {
 
   return (
     <PhoneShell>
-      <StatusBar />
-      <header className="shrink-0 border-b border-[#f0ddd0] bg-[#fff8f1] px-5 pb-3">
-        <div className="mb-2.5 flex items-center justify-between">
+      <header className="shrink-0 border-b border-[#f0ddd0] bg-[#fff8f1] px-5 pb-3 pt-4">
+        <div className="mb-3 flex items-center justify-between gap-3 px-1 pt-1">
           <div>
-            <h1 className="text-[17px] font-black tracking-[-0.3px]">El Smash del Barrio</h1>
+            <h1 className="text-[17px] font-black tracking-[-0.3px]">
+              {truck?.truckName ?? "FoodTag"}
+            </h1>
             <p className="text-xs font-medium text-[#9a7560]">Hola, {customer.name} 👋</p>
           </div>
           <button
-            className="relative flex items-center gap-1.5 rounded-xl bg-[#f97316] px-3.5 py-2 text-sm font-black text-white"
-            onClick={() => router.push("/cart")}
+            aria-label={searchOpen ? "Cerrar busqueda" : "Buscar en el menu"}
+            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#fff1e6] text-[#1c1009] shadow-[inset_0_0_0_1px_#f0ddd0]"
+            onClick={() => {
+              if (searchOpen) {
+                setSearchQuery("");
+              }
+
+              setSearchOpen((value) => !value);
+            }}
             type="button"
           >
-            <span className="text-lg leading-none">🛒</span>
-            {formatCurrency(cartTotals.subtotalCents)}
-            {cartTotals.count > 0 ? (
-              <span className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-[#ef4444] text-[11px] font-black text-white">
-                {cartTotals.count}
-              </span>
-            ) : null}
+            {searchOpen ? <X aria-hidden="true" size={21} /> : <Search aria-hidden="true" size={22} />}
           </button>
         </div>
+        {searchOpen ? (
+          <div className="mb-3 flex items-center gap-2 rounded-[14px] border-2 border-[#f0ddd0] bg-[#fffbf7] px-3.5 py-2.5">
+            <Search aria-hidden="true" className="shrink-0 text-[#9a7560]" size={18} />
+            <input
+              autoFocus
+              className="min-w-0 flex-1 bg-transparent text-[15px] font-bold text-[#1c1009] outline-none placeholder:text-[#9a7560]"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Buscar productos o categorias"
+              type="search"
+              value={searchQuery}
+            />
+          </div>
+        ) : null}
         <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none]">
-          {categories.map((category) => (
+          {visibleCategories.map((category) => (
             <button
               className={
                 category.id === activeCategory?.id
@@ -301,23 +435,36 @@ export function MenuScreen() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto pb-28 [scrollbar-width:none]">
+      <div className={cartTotals.count > 0 ? "flex-1 overflow-y-auto pb-40 [scrollbar-width:none]" : "flex-1 overflow-y-auto pb-6 [scrollbar-width:none]"}>
         {categoryItems.map((item, itemIndex) => {
           const quantity = cartItems
             .filter((entry) => entry.menuItemId === item.id)
             .reduce((total, entry) => total + entry.quantity, 0);
+          const availableVariants = item.variants.filter((variant) => variant.available);
+          const isOrderable = item.available && (!item.hasVariants || availableVariants.length > 0);
 
           return (
             <article
               className="flex gap-3.5 border-b border-[#f0ddd0] px-5 py-3.5"
               key={item.id}
-              style={{ opacity: item.available ? 1 : 0.5 }}
+              style={{ opacity: isOrderable ? 1 : 0.5 }}
             >
               <div className="relative flex size-[76px] shrink-0 items-center justify-center rounded-xl bg-[#fff1e6] text-4xl">
-                {itemEmoji(itemIndex)}
-                {!item.available ? (
+                {item.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    alt={item.name}
+                    className="size-full rounded-xl object-cover"
+                    src={item.photoUrl}
+                  />
+                ) : (
+                  itemEmoji(itemIndex)
+                )}
+                {!isOrderable ? (
                   <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-[#fff8f1]/75 text-[10px] font-black text-white">
-                    <span className="rounded-md bg-[#ef4444] px-1.5 py-0.5">AGOTADO</span>
+                    <span className="rounded-md bg-[#ef4444] px-1.5 py-0.5">
+                      {item.available ? "SIN OPCIONES" : "AGOTADO"}
+                    </span>
                   </span>
                 ) : null}
               </div>
@@ -330,13 +477,22 @@ export function MenuScreen() {
                   <p className="text-base font-black text-[#f97316]">
                     {formatCurrency(item.priceCents)}
                   </p>
-                  {item.available ? (
+                  {isOrderable ? (
                     quantity > 0 ? (
                       <div className="flex items-center gap-1.5 rounded-full bg-[#fff1e6] p-1">
+                        <button
+                          aria-label={`Restar ${item.name}`}
+                          className="flex size-7 items-center justify-center rounded-full bg-white text-lg font-black text-[#f97316] shadow-[inset_0_0_0_1px_#fed7aa]"
+                          onClick={() => decrementMenuItem(item.id)}
+                          type="button"
+                        >
+                          -
+                        </button>
                         <span className="min-w-5 text-center text-sm font-black text-[#f97316]">
                           {quantity}
                         </span>
                         <button
+                          aria-label={`Sumar ${item.name}`}
                           className="flex size-7 items-center justify-center rounded-full bg-[#f97316] text-lg font-black text-white"
                           onClick={() => openConfig(item)}
                           type="button"
@@ -355,11 +511,11 @@ export function MenuScreen() {
                     )
                   ) : null}
                 </div>
-                {(item.hasVariants || item.modifiers.length > 0) && item.available ? (
+                {(item.hasVariants || item.modifiers.length > 0) && isOrderable ? (
                   <p className="mt-1 flex gap-2 text-[11px] text-[#9a7560]">
                     {item.hasVariants ? (
                       <span>
-                        Tamaños: {item.variants.map((variant) => variant.name).join(" / ")}
+                        Tamaños: {availableVariants.map((variant) => variant.name).join(" / ")}
                       </span>
                     ) : null}
                     {item.modifiers.length > 0 ? (
@@ -371,13 +527,36 @@ export function MenuScreen() {
             </article>
           );
         })}
+        {categoryItems.length === 0 ? (
+          <div className="flex min-h-[220px] flex-col items-center justify-center px-8 text-center">
+            <p className="text-lg font-black text-[#1c1009]">No encontramos resultados</p>
+            <p className="mt-2 text-sm leading-6 text-[#9a7560]">
+              Probá buscar por nombre del producto o por categoría.
+            </p>
+          </div>
+        ) : null}
       </div>
 
       {cartTotals.count > 0 ? (
-        <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,#fff8f1_70%,transparent)] px-5 pb-6 pt-3">
-          <PrimaryPhoneButton onClick={() => router.push("/cart")} type="button">
-            Ver carrito · {cartTotals.count} {cartTotals.count === 1 ? "ítem" : "ítems"}
-          </PrimaryPhoneButton>
+        <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,#fff8f1_82%,rgba(255,248,241,0))] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5">
+          <div className="flex items-center gap-3 rounded-[18px] bg-white p-3 shadow-[0_-6px_28px_rgba(63,43,27,0.10),0_1px_0_rgba(240,221,208,0.9)]">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black text-[#9a7560]">
+                {cartTotals.count} {cartTotals.count === 1 ? "producto" : "productos"}
+              </p>
+              <p className="mt-0.5 text-xl font-black tracking-[-0.4px] text-[#1c1009]">
+                {formatCurrency(cartTotals.subtotalCents)}
+              </p>
+            </div>
+            <button
+              className="flex min-h-12 flex-[1.35] items-center justify-center gap-2 rounded-[14px] bg-[#f97316] px-4 text-[15px] font-black text-white shadow-[0_4px_16px_rgba(249,115,22,0.28)] transition active:scale-[0.98] active:bg-[#c2410c]"
+              onClick={() => router.push("/cart")}
+              type="button"
+            >
+              <ShoppingCart aria-hidden="true" size={18} />
+              Ver carrito
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -553,7 +732,6 @@ function ConfigSheet({
 function ClosedScreen({ status }: { status: TruckStatus }) {
   return (
     <PhoneShell>
-      <StatusBar />
       <div className="flex flex-1 flex-col items-center justify-center gap-4 px-7 text-center">
         <ClosedTruckIllustration />
         <h1 className="mt-2 text-[32px] font-black tracking-[-1px]">

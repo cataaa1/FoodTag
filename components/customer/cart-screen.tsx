@@ -5,14 +5,21 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { getCartTotals, useCartStore } from "@/components/customer/cart-store";
-import { PhoneShell, PrimaryPhoneButton, StatusBar } from "@/components/customer/phone-shell";
+import { PhoneShell, PrimaryPhoneButton } from "@/components/customer/phone-shell";
 import type { CustomerOrder } from "@/lib/types/domain";
 import { formatCurrency } from "@/lib/utils/format";
 import { fetchJson } from "@/lib/utils/http";
 
 type Customer = { id: string; name: string; phone: string };
+type CheckoutResponse = {
+  checkoutUrl: string | null;
+  localCheckout?: boolean;
+  mode: "mock" | "mercado_pago";
+  order: CustomerOrder;
+};
 
 const TIP_OPTIONS = [0, 5, 10, 15] as const;
+const MENU_ENTRY_SESSION_KEY = "foodtag-menu-entered";
 
 export function CartScreen() {
   const router = useRouter();
@@ -34,7 +41,7 @@ export function CartScreen() {
 
   const createOrderMutation = useMutation({
     mutationFn: () =>
-      fetchJson<{ order: CustomerOrder }>("/api/customer/order", {
+      fetchJson<CheckoutResponse>("/api/customer/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -49,6 +56,18 @@ export function CartScreen() {
       }),
     onSuccess: (data) => {
       clearCart();
+
+      if (data.checkoutUrl) {
+        if (data.localCheckout) {
+          window.open(data.checkoutUrl, "_blank", "noopener,noreferrer");
+          router.push(`/ticket/${data.order.id}`);
+          return;
+        }
+
+        window.location.assign(data.checkoutUrl);
+        return;
+      }
+
       router.push(`/ticket/${data.order.id}`);
     },
     onError: (error) => {
@@ -59,15 +78,24 @@ export function CartScreen() {
   const customer = sessionQuery.data?.customer ?? null;
   const canSubmit = Boolean(customer) && items.length > 0 && !createOrderMutation.isPending;
 
+  function goBackToMenu() {
+    try {
+      window.sessionStorage.setItem(MENU_ENTRY_SESSION_KEY, "true");
+    } catch {
+      // Storage can be unavailable on some mobile browsers; navigation should still work.
+    }
+
+    router.push("/menu");
+  }
+
   if (items.length === 0) {
     return (
       <PhoneShell>
-        <StatusBar />
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-10 text-center">
           <div className="text-[64px]">🛒</div>
           <h1 className="text-lg font-bold">El carrito está vacío</h1>
           <p className="text-sm text-[#9a7560]">Agregá algo del menú y volvé acá.</p>
-          <PrimaryPhoneButton className="mt-2" onClick={() => router.push("/menu")} type="button">
+          <PrimaryPhoneButton className="mt-2" onClick={goBackToMenu} type="button">
             ← Ir al menú
           </PrimaryPhoneButton>
         </div>
@@ -77,11 +105,10 @@ export function CartScreen() {
 
   return (
     <PhoneShell>
-      <StatusBar />
       <header className="flex shrink-0 items-center gap-3 border-b border-[#f0ddd0] px-5 pb-3 pt-2">
         <button
           className="flex size-9 items-center justify-center rounded-[10px] bg-[#f0ddd0] text-lg font-black"
-          onClick={() => router.push("/menu")}
+          onClick={goBackToMenu}
           type="button"
         >
           ←
@@ -149,8 +176,8 @@ export function CartScreen() {
             <input
               className="mt-3 w-full rounded-[10px] border border-[#f0ddd0] bg-[#fffbf7] px-3 py-2 text-xs font-medium outline-none focus:border-[#f97316]"
               onChange={(event) => updateNotes(item.cartItemId, event.target.value)}
-              placeholder="Nota opcional, ej: sin cebolla"
-              value={item.notes ?? ""}
+              placeholder="Nota adicional:"
+              
             />
           </article>
         ))}
@@ -198,14 +225,14 @@ export function CartScreen() {
         ) : null}
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,white_70%,transparent)] px-5 pb-7 pt-3">
+      <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,white_70%,transparent)] px-5 pb-[calc(1.75rem+env(safe-area-inset-bottom))] pt-3">
         <PrimaryPhoneButton
           disabled={!canSubmit}
           onClick={() => createOrderMutation.mutate()}
           type="button"
         >
           {createOrderMutation.isPending
-            ? "Creando ticket..."
+            ? "Preparando checkout..."
             : `Pagar con Mercado Pago · ${formatCurrency(totalCents)}`}
         </PrimaryPhoneButton>
       </div>
