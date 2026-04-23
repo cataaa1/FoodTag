@@ -10,6 +10,7 @@ import {
   PackageCheck,
   Phone,
   RefreshCw,
+  RotateCcw,
   Settings,
 } from "lucide-react";
 import Link from "next/link";
@@ -33,6 +34,7 @@ type StaffOrderItem = {
   lineTotalCents: number;
   status: OrderItemStatus;
   notes: string | null;
+  displayNotes: string | null;
 };
 
 type StaffOrder = {
@@ -46,12 +48,16 @@ type StaffOrder = {
   totalCents: number;
   pulseAt: string | null;
   readyAt: string | null;
+  deliveredAt: string | null;
   createdAt: string;
   items: StaffOrderItem[];
   modificationRequests: OrderModificationRequest[];
 };
 
-type ActiveOrderStatus = Extract<OrderStatus, "pending" | "preparing" | "ready">;
+type KitchenColumnStatus = Extract<
+  OrderStatus,
+  "pending" | "preparing" | "ready"
+>;
 type KitchenViewMode = "tickets" | "kanban";
 type KitchenTicketVariant = "tickets" | "kanban";
 
@@ -82,6 +88,7 @@ type KitchenTicketActions = {
   canPulse: boolean;
   isAdvancing: boolean;
   isApprovingModification: boolean;
+  isDelivering: boolean;
   isPulsing: boolean;
   isRejectingModification: boolean;
   now: number;
@@ -91,6 +98,7 @@ type KitchenTicketActions = {
     order: StaffOrder,
     request: OrderModificationRequest,
   ) => void;
+  onDeliver: (order: StaffOrder) => void;
   onPulse: (order: StaffOrder) => void;
   onRejectModification: (
     order: StaffOrder,
@@ -102,7 +110,7 @@ const EMPTY_ORDERS: StaffOrder[] = [];
 const EMPTY_PERMISSIONS: PermissionKey[] = [];
 
 const KITCHEN_COLUMNS: Array<{
-  status: ActiveOrderStatus;
+  status: KitchenColumnStatus;
   title: string;
   accent: string;
 }> = [
@@ -111,19 +119,55 @@ const KITCHEN_COLUMNS: Array<{
   { status: "ready", title: "Listos", accent: "#22c55e" },
 ];
 
-const ITEM_STATUS_LABELS: Record<OrderItemStatus, string> = {
-  pending: "Pendiente",
-  preparing: "En preparación",
-  ready: "Listo",
-  delivered: "Entregado",
-};
-
 const NEXT_ITEM_ACTION_LABELS: Record<OrderItemStatus, string> = {
   pending: "En preparación",
   preparing: "Listo",
   ready: "Entregado",
   delivered: "Entregado",
 };
+
+function getTicketColumnCount(containerWidth: number, orderCount: number) {
+  if (containerWidth >= 2100) return Math.min(orderCount, 5);
+  if (containerWidth >= 1180) return Math.min(orderCount, 4);
+  if (containerWidth >= 860) return Math.min(orderCount, 3);
+  if (containerWidth >= 560) return Math.min(orderCount, 2);
+
+  return 1;
+}
+
+function useTicketColumnCount(orderCount: number) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [columnCount, setColumnCount] = useState(() =>
+    typeof window === "undefined"
+      ? 1
+      : getTicketColumnCount(window.innerWidth, Math.max(orderCount, 1)),
+  );
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const updateColumnCount = () => {
+      const nextWidth = container?.clientWidth ?? window.innerWidth;
+      const nextCount = getTicketColumnCount(nextWidth, Math.max(orderCount, 1));
+
+      setColumnCount(nextCount);
+    };
+
+    updateColumnCount();
+
+    if (!container || typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateColumnCount);
+
+      return () => window.removeEventListener("resize", updateColumnCount);
+    }
+
+    const observer = new ResizeObserver(updateColumnCount);
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, [orderCount]);
+
+  return { columnCount, containerRef };
+}
 
 function playModificationAlarm() {
   try {
@@ -163,17 +207,13 @@ function parseDate(value: string) {
   return new Date(value.includes("T") ? value : `${value.replace(" ", "T")}Z`);
 }
 
-function orderAge(createdAt: string, now: number) {
+function formatElapsedTime(createdAt: string, now: number) {
   const created = parseDate(createdAt).getTime();
-  const diffMinutes = Math.max(0, Math.floor((now - created) / 60_000));
+  const diffSeconds = Math.max(0, Math.floor((now - created) / 1_000));
+  const minutes = Math.floor(diffSeconds / 60);
+  const seconds = diffSeconds % 60;
 
-  if (diffMinutes < 1) return "0m";
-  if (diffMinutes < 60) return `${diffMinutes}m`;
-
-  const hours = Math.floor(diffMinutes / 60);
-  const minutes = diffMinutes % 60;
-
-  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function hasPermission(permissions: PermissionKey[], permission: PermissionKey) {
@@ -184,12 +224,6 @@ function getActiveModification(order: StaffOrder) {
   return order.modificationRequests.find((request) =>
     request.status === "pending" || request.status === "extra_payment_pending"
   );
-}
-
-function getOrderNotes(order: StaffOrder) {
-  return order.items
-    .filter((item) => item.notes)
-    .map((item) => `${item.quantity}x ${item.nameSnapshot}: ${item.notes}`);
 }
 
 function getBulkAction(order: StaffOrder) {
@@ -241,12 +275,45 @@ export function StaffKanban() {
       ),
     [orders],
   );
+  const visibleOrders = useMemo(
+    () => sortedOrders.filter((order) => order.status !== "delivered"),
+    [sortedOrders],
+  );
+  const unbumpTarget = useMemo(
+    () =>
+      sortedOrders.reduce<StaffOrder | null>((target, order) => {
+        if (order.status !== "delivered") return target;
+        if (!target) return order;
+
+        const orderDeliveredAt = order.deliveredAt
+          ? parseDate(order.deliveredAt).getTime()
+          : 0;
+        const targetDeliveredAt = target.deliveredAt
+          ? parseDate(target.deliveredAt).getTime()
+          : 0;
+
+        if (orderDeliveredAt !== targetDeliveredAt) {
+          return orderDeliveredAt > targetDeliveredAt ? order : target;
+        }
+
+        return order.ticketNumber > target.ticketNumber ? order : target;
+      }, null),
+    [sortedOrders],
+  );
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => setNow(Date.now()), 30_000);
+    const intervalId = window.setInterval(() => setNow(Date.now()), 1_000);
 
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    if (!feedback) return;
+
+    const timeoutId = window.setTimeout(() => setFeedback(null), 3_500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [feedback]);
 
   useEffect(() => {
     const pendingIds = orders.flatMap((order) =>
@@ -278,7 +345,6 @@ export function StaffKanban() {
       ),
     onSuccess: async () => {
       setActionError(null);
-      setFeedback("Item actualizado");
       await refreshOrders();
     },
     onError: (error) => {
@@ -299,6 +365,38 @@ export function StaffKanban() {
     },
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "No pudimos avanzar el ticket");
+    },
+  });
+
+  const bumpMutation = useMutation({
+    mutationFn: (order: StaffOrder) =>
+      fetchJson<{ order: StaffOrder | null }>(
+        `/api/staff/orders/${order.id}/bump`,
+        { method: "POST" },
+      ),
+    onSuccess: async () => {
+      setActionError(null);
+      setFeedback("Pedido entregado");
+      await refreshOrders();
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : "No pudimos bumpear el ticket");
+    },
+  });
+
+  const unbumpMutation = useMutation({
+    mutationFn: (order: StaffOrder) =>
+      fetchJson<{ order: StaffOrder | null }>(
+        `/api/staff/orders/${order.id}/unbump`,
+        { method: "POST" },
+      ),
+    onSuccess: async () => {
+      setActionError(null);
+      setFeedback("Pedido vuelve a listo");
+      await refreshOrders();
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : "No pudimos hacer unbump");
     },
   });
 
@@ -366,8 +464,13 @@ export function StaffKanban() {
     canAdvance,
     canApproveMod,
     canPulse,
-    isAdvancing: advanceItemMutation.isPending || advanceAllMutation.isPending,
+    isAdvancing:
+      advanceItemMutation.isPending ||
+      advanceAllMutation.isPending ||
+      bumpMutation.isPending ||
+      unbumpMutation.isPending,
     isApprovingModification: approveModificationMutation.isPending,
+    isDelivering: bumpMutation.isPending,
     isPulsing: pulseMutation.isPending,
     isRejectingModification: rejectModificationMutation.isPending,
     now,
@@ -375,6 +478,7 @@ export function StaffKanban() {
     onAdvanceItem: (order, item) => advanceItemMutation.mutate({ order, item }),
     onApproveModification: (order, request) =>
       approveModificationMutation.mutate({ order, request }),
+    onDeliver: (order) => bumpMutation.mutate(order),
     onPulse: (order) => pulseMutation.mutate(order),
     onRejectModification: (order, request) =>
       rejectModificationMutation.mutate({ order, request }),
@@ -443,26 +547,33 @@ export function StaffKanban() {
               Vista cocina
             </p>
             <h2 className="text-2xl font-black tracking-[-0.7px]">
-              {sortedOrders.length} en cocina
+              {visibleOrders.length} en cocina
             </h2>
           </div>
           <ViewModeTabs onChange={setViewMode} value={viewMode} />
         </div>
 
+        <GlobalUnbumpBar
+          canAdvance={canAdvance}
+          isUnbumping={unbumpMutation.isPending}
+          onUnbump={(order) => unbumpMutation.mutate(order)}
+          unbumpTarget={unbumpTarget}
+        />
+
         {ordersQuery.isLoading ? (
-          <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 min-[2300px]:grid-cols-5">
             {Array.from({ length: 6 }).map((_, index) => (
               <div
-                className="min-h-[240px] animate-pulse rounded-[14px] border border-[#2e2e2e] bg-[#1a1a1a]"
+                className="min-h-[260px] animate-pulse rounded-[14px] border border-[#2e2e2e] bg-[#1a1a1a]"
                 key={index}
               />
             ))}
           </div>
-        ) : sortedOrders.length ? (
+        ) : visibleOrders.length ? (
           viewMode === "tickets" ? (
-            <TicketsGrid actions={ticketActions} orders={sortedOrders} />
+            <TicketsGrid actions={ticketActions} orders={visibleOrders} />
           ) : (
-            <KitchenKanbanBoard actions={ticketActions} orders={sortedOrders} />
+            <KitchenKanbanBoard actions={ticketActions} orders={visibleOrders} />
           )
         ) : (
           <div className="flex min-h-[56vh] items-center justify-center rounded-[16px] border border-dashed border-[#2e2e2e] bg-[#1a1a1a] p-8 text-center">
@@ -476,6 +587,63 @@ export function StaffKanban() {
         )}
       </section>
     </main>
+  );
+}
+
+function GlobalUnbumpBar({
+  canAdvance,
+  isUnbumping,
+  onUnbump,
+  unbumpTarget,
+}: {
+  canAdvance: boolean;
+  isUnbumping: boolean;
+  onUnbump: (order: StaffOrder) => void;
+  unbumpTarget: StaffOrder | null;
+}) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#2e2e2e] bg-[#151515] p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <GlobalTarget label="Ultimo entregado" order={unbumpTarget} tone="neutral" />
+      </div>
+
+      <div className="w-full sm:w-auto sm:min-w-[180px]">
+        <ActionButton
+          disabled={!canAdvance || isUnbumping || !unbumpTarget}
+          icon={<RotateCcw />}
+          onClick={() => {
+            if (unbumpTarget) onUnbump(unbumpTarget);
+          }}
+          tone="neutral"
+        >
+          {isUnbumping ? "Volviendo..." : "Unbump"}
+        </ActionButton>
+      </div>
+    </div>
+  );
+}
+
+function GlobalTarget({
+  label,
+  order,
+  tone,
+}: {
+  label: string;
+  order: StaffOrder | null;
+  tone: "green" | "neutral";
+}) {
+  const classes = {
+    green: "border-[#22c55e]/25 bg-[#22c55e]/10 text-[#22c55e]",
+    neutral: "border-[#2e2e2e] bg-[#242424] text-[#a0a0a0]",
+  } satisfies Record<typeof tone, string>;
+
+  return (
+    <div className={`rounded-[10px] border px-3 py-2 ${classes[tone]}`}>
+      <p className="text-[10px] font-black uppercase tracking-[0.7px]">{label}</p>
+      <p className="mt-0.5 text-sm font-black text-white">
+        {order ? `#${String(order.ticketNumber).padStart(3, "0")}` : "Sin ticket"}
+      </p>
+    </div>
   );
 }
 
@@ -544,10 +712,29 @@ function TicketsGrid({
   actions: KitchenTicketActions;
   orders: StaffOrder[];
 }) {
+  const { columnCount, containerRef } = useTicketColumnCount(orders.length);
+  const columns = useMemo(() => {
+    const nextColumns = Array.from({ length: columnCount }, () => [] as StaffOrder[]);
+
+    orders.forEach((order, index) => {
+      nextColumns[index % columnCount]!.push(order);
+    });
+
+    return nextColumns;
+  }, [columnCount, orders]);
+
   return (
-    <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-      {orders.map((order) => (
-        <KitchenTicket actions={actions} key={order.id} order={order} />
+    <div
+      className="grid w-full items-start gap-4"
+      ref={containerRef}
+      style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}
+    >
+      {columns.map((columnOrders, columnIndex) => (
+        <div className="grid gap-4" key={columnIndex}>
+          {columnOrders.map((order) => (
+            <KitchenTicket actions={actions} key={order.id} order={order} />
+          ))}
+        </div>
       ))}
     </div>
   );
@@ -561,16 +748,16 @@ function KitchenKanbanBoard({
   orders: StaffOrder[];
 }) {
   return (
-    <div className="grid gap-3 xl:grid-cols-3">
+    <div className="grid gap-4 xl:grid-cols-3">
       {KITCHEN_COLUMNS.map((column) => {
         const columnOrders = orders.filter((order) => order.status === column.status);
 
         return (
           <section
-            className="min-h-[calc(100vh-200px)] rounded-[14px] border border-[#2e2e2e] bg-[#151515] p-2.5"
+            className="min-h-[calc(100vh-200px)] rounded-[14px] border border-[#2e2e2e] bg-[#151515] p-3"
             key={column.status}
           >
-            <div className="mb-2.5 flex items-center justify-between gap-3 px-1">
+            <div className="mb-3 flex items-center justify-between gap-3 px-1">
               <div className="flex items-center gap-2">
                 <span
                   className="size-2.5 rounded-full"
@@ -585,7 +772,7 @@ function KitchenKanbanBoard({
               </span>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {columnOrders.map((order) => (
                 <KitchenTicket
                   actions={actions}
@@ -622,6 +809,7 @@ function KitchenTicket({
     canPulse,
     isAdvancing,
     isApprovingModification,
+    isDelivering,
     isPulsing,
     isRejectingModification,
     now,
@@ -630,13 +818,12 @@ function KitchenTicket({
   const pendingModification = order.modificationRequests.find(
     (request) => request.status === "pending",
   );
-  const orderNotes = getOrderNotes(order);
   const bulkAction = getBulkAction(order);
   const disabledByModification = Boolean(activeModification);
+  const showBulkAction = order.status === "pending" || order.status === "preparing";
   const completedItems = order.items.filter((item) =>
     item.status === "ready" || item.status === "delivered"
   ).length;
-  const cardMinHeight = variant === "kanban" ? "min-h-[260px]" : "min-h-[300px]";
   const ticketNumberClass =
     variant === "kanban"
       ? "ticket-font text-[30px] font-black leading-none tracking-[-0.8px]"
@@ -644,38 +831,25 @@ function KitchenTicket({
 
   return (
     <article
-      className={`flex ${cardMinHeight} flex-col rounded-[14px] border border-[#2e2e2e] bg-[#1a1a1a] shadow-[0_12px_28px_rgba(0,0,0,0.22)]`}
+      className={`flex flex-col self-start overflow-hidden rounded-[14px] border border-[#2e2e2e] bg-[#1a1a1a] shadow-[0_12px_28px_rgba(0,0,0,0.22)] ${
+        variant === "tickets" ? "w-full" : ""
+      }`}
     >
-      <div className="border-b border-[#2e2e2e] px-3 py-3">
-        <div className="mb-2.5 flex items-start justify-between gap-2">
+      <div className="border-b border-[#2e2e2e] px-4 py-3.5">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className={ticketNumberClass}>
               #{String(order.ticketNumber).padStart(3, "0")}
             </h1>
-            <p className="mt-0.5 text-sm font-black text-white">{order.customerName}</p>
+            <p className="mt-1 text-sm font-black text-white">{order.customerName}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1 rounded-full border border-[#f97316]/25 bg-[#f97316]/10 px-2 py-1 text-xs font-black text-[#f97316]">
             <Clock3 className="size-3.5" />
-            {orderAge(order.createdAt, now)}
+            {formatElapsedTime(order.createdAt, now)}
           </div>
         </div>
 
-        {orderNotes.length ? (
-          <div className="rounded-[10px] border border-[#eab308]/30 bg-[#eab308]/10 px-2.5 py-1.5">
-            <p className="text-[10px] font-black uppercase tracking-[0.6px] text-[#eab308]">
-              Notas adicionales
-            </p>
-            <div className="mt-1 space-y-1">
-              {orderNotes.map((note) => (
-                <p className="text-xs font-bold text-[#fef3c7]" key={note}>
-                  {note}
-                </p>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-[#606060]">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-[#606060]">
           <span>
             {completedItems}/{order.items.length} listos
           </span>
@@ -698,7 +872,7 @@ function KitchenTicket({
         />
       ) : null}
 
-      <div className="flex-1 divide-y divide-[#2e2e2e]">
+      <div className="divide-y divide-[#2e2e2e]">
         {order.items.map((item) => (
           <KitchenItemRow
             disabled={!canAdvance || isAdvancing || disabledByModification}
@@ -709,25 +883,38 @@ function KitchenTicket({
         ))}
       </div>
 
-      <div className="grid gap-1.5 border-t border-[#2e2e2e] p-3">
-        <ActionButton
-          disabled={
-            !canAdvance || isAdvancing || disabledByModification || bulkAction.disabled
-          }
-          icon={
-            bulkAction.tone === "green" ? (
-              <CheckCircle2 />
-            ) : bulkAction.tone === "neutral" ? (
-              <PackageCheck />
-            ) : (
-              <Flame />
-            )
-          }
-          onClick={() => actions.onAdvanceAll(order)}
-          tone={bulkAction.tone}
-        >
-          {isAdvancing ? "Actualizando..." : bulkAction.label}
-        </ActionButton>
+      <div className="grid gap-2 border-t border-[#2e2e2e] p-3.5">
+        {showBulkAction ? (
+          <ActionButton
+            disabled={
+              !canAdvance || isAdvancing || disabledByModification || bulkAction.disabled
+            }
+            icon={
+              bulkAction.tone === "green" ? (
+                <CheckCircle2 />
+              ) : bulkAction.tone === "neutral" ? (
+                <PackageCheck />
+              ) : (
+                <Flame />
+              )
+            }
+            onClick={() => actions.onAdvanceAll(order)}
+            tone={bulkAction.tone}
+          >
+            {isAdvancing ? "Actualizando..." : bulkAction.label}
+          </ActionButton>
+        ) : null}
+
+        {order.status === "ready" ? (
+          <ActionButton
+            disabled={!canAdvance || isAdvancing || disabledByModification}
+            icon={<PackageCheck />}
+            onClick={() => actions.onDeliver(order)}
+            tone="green"
+          >
+            {isDelivering ? "Entregando..." : "Entregar"}
+          </ActionButton>
+        ) : null}
 
         {order.status === "ready" ? (
           <ActionButton
@@ -759,57 +946,46 @@ function KitchenItemRow({
   item: StaffOrderItem;
   onAdvance: () => void;
 }) {
-  const isDelivered = item.status === "delivered";
+  const canAdvanceItem = item.status === "pending" || item.status === "preparing";
 
   return (
     <div className="px-3 py-2">
-      <div className="flex items-start gap-2">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-[#242424] text-xs font-black text-[#f97316]">
+      <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-start gap-2.5">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-[#242424] text-xs font-black text-[#f97316]">
           {item.quantity}x
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-[13px] font-black leading-snug text-white">
-                {item.nameSnapshot}
-              </p>
-              {item.variantNameSnapshot ? (
-                <p className="text-[11px] font-bold text-[#eab308]">
-                  {item.variantNameSnapshot}
-                </p>
-              ) : null}
-            </div>
-            <StatusBadge status={item.status} />
-          </div>
-
-          {item.notes ? (
-            <p className="mt-1.5 rounded-[7px] bg-[#eab308]/10 px-2 py-1 text-[11px] font-bold text-[#fef3c7]">
-              {item.notes}
+        <div className="min-w-0">
+          <p className="text-[14px] font-black leading-snug text-white">
+            {item.nameSnapshot}
+          </p>
+          {item.variantNameSnapshot ? (
+            <p className="mt-0.5 text-[11px] font-bold text-[#eab308]">
+              {item.variantNameSnapshot}
             </p>
           ) : null}
 
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          {item.displayNotes ? (
+            <p className="mt-2 rounded-[8px] bg-[#eab308]/10 px-2.5 py-1.5 text-[11px] font-bold leading-snug text-[#fef3c7]">
+              {item.displayNotes}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 self-center items-center gap-2">
+          {canAdvanceItem ? (
             <ActionButton
               compact
-              disabled={disabled || isDelivered}
-              icon={
-                item.status === "preparing" ? (
-                  <CheckCircle2 />
-                ) : item.status === "ready" ? (
-                  <PackageCheck />
-                ) : (
-                  <Flame />
-                )
-              }
+              disabled={disabled}
+              icon={item.status === "preparing" ? <CheckCircle2 /> : <Flame />}
               onClick={onAdvance}
               tone={item.status === "preparing" ? "green" : "orange"}
             >
               {NEXT_ITEM_ACTION_LABELS[item.status]}
             </ActionButton>
-            <span className="text-[11px] font-bold text-[#606060]">
-              {formatCurrency(item.lineTotalCents)}
-            </span>
-          </div>
+          ) : null}
+          <span className="min-w-[50px] text-right text-[11px] font-bold text-[#606060]">
+            {formatCurrency(item.lineTotalCents)}
+          </span>
         </div>
       </div>
     </div>
@@ -893,23 +1069,6 @@ function ModificationPanel({
   );
 }
 
-function StatusBadge({ status }: { status: OrderItemStatus }) {
-  const classes = {
-    pending: "border-[#606060]/35 bg-[#606060]/15 text-[#a0a0a0]",
-    preparing: "border-[#f97316]/35 bg-[#f97316]/15 text-[#fb923c]",
-    ready: "border-[#22c55e]/35 bg-[#22c55e]/15 text-[#22c55e]",
-    delivered: "border-[#a0a0a0]/25 bg-[#242424] text-[#a0a0a0]",
-  } satisfies Record<OrderItemStatus, string>;
-
-  return (
-    <span
-      className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-black ${classes[status]}`}
-    >
-      {ITEM_STATUS_LABELS[status]}
-    </span>
-  );
-}
-
 function Badge({ label, tone }: { label: string; tone: "yellow" }) {
   return (
     <span
@@ -946,7 +1105,7 @@ function ActionButton({
     neutral: "border border-[#2e2e2e] bg-[#242424] text-[#f5f5f5]",
   } satisfies Record<typeof tone, string>;
   const sizeClasses = compact
-    ? "min-h-9 w-auto px-3 py-1.5 text-xs"
+    ? "min-h-8 w-auto px-2.5 py-1 text-[11px]"
     : "min-h-10 w-full px-3 py-2 text-sm";
 
   return (

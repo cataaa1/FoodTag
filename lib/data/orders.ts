@@ -50,6 +50,12 @@ type MenuModifierRow = {
   label: string;
 };
 
+type MenuItemModifierRow = {
+  menu_item_id: string;
+  label: string;
+  default_checked: number;
+};
+
 type OrderRow = {
   id: string;
   ticket_number: number;
@@ -85,6 +91,10 @@ type OrderItemRow = {
   line_total_cents: number;
   status: OrderItemStatus;
   notes: string | null;
+};
+
+type StaffOrderItem = OrderItem & {
+  displayNotes: string | null;
 };
 
 type OrderModificationRequestRow = {
@@ -146,6 +156,74 @@ function mapOrderItem(row: OrderItemRow): OrderItem {
     lineTotalCents: row.line_total_cents,
     status: row.status,
     notes: row.notes,
+  };
+}
+
+function normalizeNotePart(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function modifierDefaultNotePart(modifier: MenuItemModifierRow) {
+  if (modifier.default_checked) {
+    return modifier.label;
+  }
+
+  const normalizedLabel = modifier.label.replace(/^con\s+/i, "").toLowerCase();
+  return `Sin ${normalizedLabel}`;
+}
+
+function visibleStaffNotes(
+  notes: string | null,
+  modifiers: MenuItemModifierRow[],
+) {
+  if (!notes) {
+    return null;
+  }
+
+  const hiddenDefaultParts = new Set(
+    modifiers.map((modifier) => normalizeNotePart(modifierDefaultNotePart(modifier))),
+  );
+  const visibleParts = notes
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => !hiddenDefaultParts.has(normalizeNotePart(part)));
+
+  return visibleParts.join(", ") || null;
+}
+
+function getModifiersByMenuItemId(db: Database.Database) {
+  const rows = db
+    .prepare<[], MenuItemModifierRow>(
+      `
+        select menu_item_id, label, default_checked
+        from menu_item_modifier
+        order by position asc
+      `,
+    )
+    .all();
+  const byMenuItemId = new Map<string, MenuItemModifierRow[]>();
+
+  rows.forEach((row) => {
+    byMenuItemId.set(row.menu_item_id, [
+      ...(byMenuItemId.get(row.menu_item_id) ?? []),
+      row,
+    ]);
+  });
+
+  return byMenuItemId;
+}
+
+function mapStaffOrderItem(
+  row: OrderItemRow,
+  modifiersByMenuItemId: Map<string, MenuItemModifierRow[]>,
+): StaffOrderItem {
+  return {
+    ...mapOrderItem(row),
+    displayNotes: visibleStaffNotes(
+      row.notes,
+      modifiersByMenuItemId.get(row.menu_item_id) ?? [],
+    ),
   };
 }
 
@@ -569,6 +647,7 @@ function syncOrderStatusFromItems(db: Database.Database, orderId: string) {
         end,
         delivered_at = case
           when @status = 'delivered' and delivered_at is null then datetime('now')
+          when @status <> 'delivered' then null
           else delivered_at
         end,
         updated_at = datetime('now')
@@ -684,6 +763,56 @@ export function advanceStaffOrder(orderId: string) {
   return advanceAllStaffOrderItems(orderId);
 }
 
+export function bumpStaffOrder(orderId: string) {
+  const db = getDb();
+  const transaction = db.transaction(() => {
+    const current = assertOrderCanMove(getOrderRowById(orderId));
+
+    if (current.status !== "ready") {
+      throw new ApiError(409, "CONFLICT", "Solo podes bumpear pedidos listos");
+    }
+
+    db.prepare(
+      `
+        update order_item set
+          status = 'delivered'
+        where order_id = @orderId
+      `,
+    ).run({ orderId });
+
+    syncOrderStatusFromItems(db, orderId);
+
+    return getStaffOrderById(orderId);
+  });
+
+  return transaction();
+}
+
+export function unbumpStaffOrder(orderId: string) {
+  const db = getDb();
+  const transaction = db.transaction(() => {
+    const current = assertOrderCanMove(getOrderRowById(orderId));
+
+    if (current.status !== "delivered") {
+      throw new ApiError(409, "CONFLICT", "Solo podes hacer unbump de pedidos entregados");
+    }
+
+    db.prepare(
+      `
+        update order_item set
+          status = 'ready'
+        where order_id = @orderId
+      `,
+    ).run({ orderId });
+
+    syncOrderStatusFromItems(db, orderId);
+
+    return getStaffOrderById(orderId);
+  });
+
+  return transaction();
+}
+
 export function pulseStaffOrder(orderId: string) {
   const db = getDb();
   const current = getOrderRowById(orderId);
@@ -745,8 +874,14 @@ export function getStaffOrders() {
           customer.phone as customer_phone
         from customer_order
         join customer on customer.id = customer_order.customer_id
-        where customer_order.status in ('pending', 'preparing', 'ready')
-          and customer_order.payment_status = 'approved'
+        where customer_order.payment_status = 'approved'
+          and (
+            customer_order.status in ('pending', 'preparing', 'ready')
+            or (
+              customer_order.status = 'delivered'
+              and customer_order.delivered_at >= datetime('now', '-10 minutes')
+            )
+          )
         order by customer_order.created_at asc
       `,
     )
@@ -756,11 +891,14 @@ export function getStaffOrders() {
       "select * from order_item order by rowid asc",
     )
     .all();
+  const modifiersByMenuItemId = getModifiersByMenuItemId(db);
 
   return orderRows.map((row) => ({
     ...mapOrder(
       row,
-      itemRows.filter((item) => item.order_id === row.id).map(mapOrderItem),
+      itemRows
+        .filter((item) => item.order_id === row.id)
+        .map((item) => mapStaffOrderItem(item, modifiersByMenuItemId)),
       getModificationRequestsForOrder(row.id),
     ),
     customerName: row.customer_name,
@@ -793,9 +931,14 @@ export function getStaffOrderById(orderId: string) {
       "select * from order_item where order_id = @orderId order by rowid asc",
     )
     .all({ orderId });
+  const modifiersByMenuItemId = getModifiersByMenuItemId(db);
 
   return {
-    ...mapOrder(row, itemRows.map(mapOrderItem), getModificationRequestsForOrder(orderId)),
+    ...mapOrder(
+      row,
+      itemRows.map((item) => mapStaffOrderItem(item, modifiersByMenuItemId)),
+      getModificationRequestsForOrder(orderId),
+    ),
     customerName: row.customer_name,
     customerPhone: row.customer_phone,
   };

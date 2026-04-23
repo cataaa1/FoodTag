@@ -228,6 +228,10 @@ export function MenuScreen() {
     const options = item.modifiers.flatMap((modifier) => {
       const selected = values[modifier.id] ?? modifier.defaultChecked;
 
+      if (selected === modifier.defaultChecked) {
+        return [];
+      }
+
       const normalized = modifier.label.replace(/^con\s+/i, "").toLowerCase();
       return selected ? [modifier.label] : [`Sin ${normalized}`];
     });
