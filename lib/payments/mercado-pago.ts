@@ -58,14 +58,6 @@ function centsToAmount(cents: number) {
   return Number((cents / 100).toFixed(2));
 }
 
-function isLocalAppUrl(appUrl: string) {
-  try {
-    const hostname = new URL(appUrl).hostname;
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
-  } catch {
-    return false;
-  }
-}
 
 function isPublicHttpsUrl(appUrl: string) {
   try {

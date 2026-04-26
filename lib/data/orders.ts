@@ -558,6 +558,21 @@ export function getCustomerOrderById(customerId: string, orderId: string) {
   );
 }
 
+export function getActiveOrderForCustomer(customerId: string): { id: string } | null {
+  return (
+    getDb()
+      .prepare<{ customerId: string }, { id: string }>(
+        `select id from customer_order
+         where customer_id = @customerId
+           and status not in ('cancelled', 'delivered')
+           and picked_up_at is null
+         order by created_at desc
+         limit 1`,
+      )
+      .get({ customerId }) ?? null
+  );
+}
+
 function getOrderRowById(orderId: string) {
   return getDb()
     .prepare<{ id: string }, OrderRow>("select * from customer_order where id = @id")

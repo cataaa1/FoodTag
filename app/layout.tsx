@@ -22,7 +22,7 @@ const dmMono = DM_Mono({
 export const metadata: Metadata = {
   title: "FoodTag",
   description: "Pedidos autoservicio para food trucks con beeper digital.",
-  manifest: "/manifest.json",
+  manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

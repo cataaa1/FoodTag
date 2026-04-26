@@ -8,6 +8,26 @@ import { fetchJson } from "@/lib/utils/http";
 const DISMISSED_KEY = (orderId: string) => `pwa-banner-dismissed-${orderId}`;
 const SUBSCRIBED_KEY = (orderId: string) => `pwa-push-subscribed-${orderId}`;
 
+async function issueHandoffToken(ticketId: string): Promise<string> {
+  const data = await fetchJson<{ token: string }>("/api/customer/handoff/issue", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ticketId }),
+  });
+  return data.token;
+}
+
+function updateManifestLink(ticketId: string, token: string) {
+  const url = `/manifest.webmanifest?ticket=${encodeURIComponent(ticketId)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
+  let link = document.head.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "manifest";
+    document.head.appendChild(link);
+  }
+  link.href = url;
+}
+
 async function subscribePush(orderId: string, vapidPublicKey: string): Promise<void> {
   const reg = await navigator.serviceWorker.ready;
   const existing = await reg.pushManager.getSubscription();
@@ -56,7 +76,12 @@ type Props = {
 export function InstallPwaBanner({ orderId, vapidPublicKey, accentColor }: Props) {
   const { state, triggerInstall, dismiss } = usePwaInstall();
   const [visible, setVisible] = useState(false);
-  const [step, setStep] = useState<"install" | "permission" | "done" | "error">("install");
+  // "install" → waiting for user tap
+  // "preparing" → fetching token + updating manifest (iOS: then show instructions; Android: then trigger prompt)
+  // "ios-instructions" → manifest updated, showing iOS add-to-home instructions
+  // "permission" → asking push permission (Android/Desktop post-install)
+  // "done" | "error"
+  const [step, setStep] = useState<"install" | "preparing" | "ios-instructions" | "permission" | "done" | "error">("install");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,12 +108,26 @@ export function InstallPwaBanner({ orderId, vapidPublicKey, accentColor }: Props
     dismiss();
   }
 
-  async function handleInstallAndSubscribe() {
+  async function handleInstall() {
+    setStep("preparing");
     try {
+      // Step 1: issue handoff token
+      const token = await issueHandoffToken(orderId);
+      // Step 2: update <link rel="manifest"> with token BEFORE any user action
+      updateManifestLink(orderId, token);
+
+      if (state === "ios") {
+        // Step 3 (iOS): manifest is ready — now show instructions so user installs with the correct manifest
+        setStep("ios-instructions");
+        return;
+      }
+
+      // Android/Desktop: trigger the install prompt (manifest already updated above)
       if (state === "prompt-ready") {
         await triggerInstall();
       }
-      // After install (or on iOS where we skip install step), ask for push permission
+
+      // After install prompt, ask for push permission
       setStep("permission");
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
@@ -100,7 +139,7 @@ export function InstallPwaBanner({ orderId, vapidPublicKey, accentColor }: Props
       setStep("done");
       window.setTimeout(() => setVisible(false), 3000);
     } catch {
-      setErrorMsg("No pudimos activar las notificaciones. Intentá de nuevo.");
+      setErrorMsg("No pudimos preparar la instalación. Intentá de nuevo.");
       setStep("error");
     }
   }
@@ -128,14 +167,15 @@ export function InstallPwaBanner({ orderId, vapidPublicKey, accentColor }: Props
         ✕
       </button>
 
-      {state === "ios" ? (
+      {step === "ios-instructions" ? (
+        // iOS: manifest already updated — safe to show instructions now
         <>
           <p className="mb-1 text-sm font-black text-[#2b1b12]">
-            Recibí el aviso aunque cierres la pestaña
+            Ya casi — instalá la app
           </p>
           <p className="mb-3 text-xs leading-5 text-[#6b4e35]">
             Tocá el botón compartir <strong>⎋</strong> de Safari y elegí{" "}
-            <strong>"Agregar a pantalla de inicio"</strong>. Luego abrí la app y aceptá las notificaciones.
+            <strong>&ldquo;Agregar a pantalla de inicio&rdquo;</strong>. Cuando la abrís desde el ícono, va a ir directo a tu pedido.
           </p>
           <button
             className="w-full rounded-xl py-2.5 text-sm font-black text-white"
@@ -159,13 +199,16 @@ export function InstallPwaBanner({ orderId, vapidPublicKey, accentColor }: Props
               {errorMsg}
             </p>
           ) : null}
+          {step === "preparing" ? (
+            <p className="mb-2 text-xs font-bold text-[#9a7560]">Preparando instalación…</p>
+          ) : null}
           {step === "permission" ? (
             <p className="mb-2 text-xs font-bold text-[#9a7560]">Activando notificaciones…</p>
           ) : null}
           <button
             className="w-full rounded-xl py-2.5 text-sm font-black text-white disabled:opacity-50"
-            disabled={step === "permission"}
-            onClick={() => void handleInstallAndSubscribe()}
+            disabled={step === "preparing" || step === "permission"}
+            onClick={() => void handleInstall()}
             style={{ backgroundColor: accentColor }}
             type="button"
           >

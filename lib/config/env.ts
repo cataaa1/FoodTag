@@ -16,6 +16,7 @@ const serverEnvSchema = clientEnvSchema.extend({
   SEED_ADMIN_FULL_NAME: z.string().min(2).optional(),
   VAPID_PRIVATE_KEY: z.string().min(1).optional(),
   VAPID_CONTACT_EMAIL: z.string().email().optional(),
+  HANDOFF_TOKEN_SECRET: z.string().min(32),
 });
 
 type ClientEnv = z.infer<typeof clientEnvSchema>;
@@ -54,6 +55,7 @@ export function getServerEnv(): ServerEnv {
     SEED_ADMIN_FULL_NAME: process.env.SEED_ADMIN_FULL_NAME,
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || undefined,
     VAPID_CONTACT_EMAIL: process.env.VAPID_CONTACT_EMAIL || undefined,
+    HANDOFF_TOKEN_SECRET: process.env.HANDOFF_TOKEN_SECRET,
   });
 
   return cachedServerEnv;

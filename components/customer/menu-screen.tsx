@@ -108,7 +108,7 @@ function TruckBrandFallback({
   );
 }
 
-export function MenuScreen() {
+export function MenuScreen({ handoffError }: { handoffError?: string }) {
   const router = useRouter();
   const [draft, setDraft] = useState<SessionDraft>({ name: "", phone: "" });
   const [sessionCustomer, setSessionCustomer] = useState<Customer | null>(null);
@@ -390,6 +390,13 @@ export function MenuScreen() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 pb-[100px] pt-6 [scrollbar-width:none]">
+          {handoffError ? (
+            <div className="mb-4 rounded-2xl border border-[#f0ddd0] bg-[#fff7ef] px-4 py-3 text-[13px] leading-5 text-[#6b4e35]">
+              <strong className="block font-black text-[#1c1009]">No pudimos recuperar tu pedido automáticamente.</strong>
+              Si tu pedido sigue activo, escaneá de nuevo el QR del truck.
+            </div>
+          ) : null}
+
           <div className="mb-6 flex items-start gap-3 rounded-2xl bg-[#fff1e6] px-[18px] py-4">
             <span className="shrink-0 text-[22px]">👋</span>
             <div>
