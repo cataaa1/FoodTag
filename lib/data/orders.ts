@@ -72,6 +72,7 @@ type OrderRow = {
   pulse_at: string | null;
   ready_at: string | null;
   delivered_at: string | null;
+  picked_up_at: string | null;
   cancelled_at: string | null;
   cancel_reason: string | null;
   refund_pending: number;
@@ -289,6 +290,7 @@ function mapOrder(
     pulseAt: row.pulse_at,
     readyAt: row.ready_at,
     deliveredAt: row.delivered_at,
+    pickedUpAt: row.picked_up_at,
     cancelledAt: row.cancelled_at,
     cancelReason: row.cancel_reason,
     refundPending: Boolean(row.refund_pending),
@@ -562,6 +564,16 @@ function getOrderRowById(orderId: string) {
     .get({ id: orderId });
 }
 
+function getCustomerPickupCooldownSeconds(db: Database.Database) {
+  const row = db
+    .prepare<[], { customer_pickup_cooldown_seconds: number }>(
+      "select customer_pickup_cooldown_seconds from truck_config limit 1",
+    )
+    .get();
+
+  return Math.max(0, row?.customer_pickup_cooldown_seconds ?? 15);
+}
+
 function getNextOrderItemStatus(status: OrderItemStatus) {
   const nextStatusByCurrent: Partial<Record<OrderItemStatus, OrderItemStatus>> = {
     pending: "preparing",
@@ -649,6 +661,10 @@ function syncOrderStatusFromItems(db: Database.Database, orderId: string) {
           when @status = 'delivered' and delivered_at is null then datetime('now')
           when @status <> 'delivered' then null
           else delivered_at
+        end,
+        picked_up_at = case
+          when @status in ('pending', 'preparing') then null
+          else picked_up_at
         end,
         updated_at = datetime('now')
       where id = @id
@@ -766,11 +782,7 @@ export function advanceStaffOrder(orderId: string) {
 export function bumpStaffOrder(orderId: string) {
   const db = getDb();
   const transaction = db.transaction(() => {
-    const current = assertOrderCanMove(getOrderRowById(orderId));
-
-    if (current.status !== "ready") {
-      throw new ApiError(409, "CONFLICT", "Solo podes bumpear pedidos listos");
-    }
+    assertOrderCanMove(getOrderRowById(orderId));
 
     db.prepare(
       `
@@ -808,6 +820,48 @@ export function unbumpStaffOrder(orderId: string) {
     syncOrderStatusFromItems(db, orderId);
 
     return getStaffOrderById(orderId);
+  });
+
+  return transaction();
+}
+
+export function confirmCustomerOrderPickup(customerId: string, orderId: string) {
+  const db = getDb();
+  const transaction = db.transaction(() => {
+    const current = db
+      .prepare<{ id: string; customerId: string }, OrderRow>(
+        "select * from customer_order where id = @id and customer_id = @customerId",
+      )
+      .get({ id: orderId, customerId });
+
+    if (!current) {
+      throw new ApiError(404, "NOT_FOUND", "No encontramos ese ticket");
+    }
+
+    if (current.payment_status !== "approved") {
+      throw new ApiError(409, "CONFLICT", "El pago del pedido todavia no esta aprobado");
+    }
+
+    if (current.status !== "ready" && current.status !== "delivered") {
+      throw new ApiError(409, "CONFLICT", "Todavia no podes confirmar el retiro");
+    }
+
+    db.prepare(
+      `
+        update customer_order set
+          picked_up_at = coalesce(picked_up_at, datetime('now')),
+          updated_at = datetime('now')
+        where id = @orderId
+      `,
+    ).run({ orderId });
+
+    const order = getCustomerOrderById(customerId, orderId);
+
+    if (!order) {
+      throw new ApiError(500, "INTERNAL", "No pudimos confirmar el retiro");
+    }
+
+    return order;
   });
 
   return transaction();
@@ -865,8 +919,10 @@ export function cancelStaffOrder(orderId: string, reason: string) {
 
 export function getStaffOrders() {
   const db = getDb();
+  const cooldownSeconds = getCustomerPickupCooldownSeconds(db);
+  const pickupVisibleSince = `-${cooldownSeconds} seconds`;
   const orderRows = db
-    .prepare<[], StaffOrderRow>(
+    .prepare<{ pickupVisibleSince: string }, StaffOrderRow>(
       `
         select
           customer_order.*,
@@ -876,7 +932,14 @@ export function getStaffOrders() {
         join customer on customer.id = customer_order.customer_id
         where customer_order.payment_status = 'approved'
           and (
-            customer_order.status in ('pending', 'preparing', 'ready')
+            customer_order.status in ('pending', 'preparing')
+            or (
+              customer_order.status = 'ready'
+              and (
+                customer_order.picked_up_at is null
+                or customer_order.picked_up_at >= datetime('now', @pickupVisibleSince)
+              )
+            )
             or (
               customer_order.status = 'delivered'
               and customer_order.delivered_at >= datetime('now', '-10 minutes')
@@ -885,7 +948,7 @@ export function getStaffOrders() {
         order by customer_order.created_at asc
       `,
     )
-    .all();
+    .all({ pickupVisibleSince });
   const itemRows = db
     .prepare<[], OrderItemRow>(
       "select * from order_item order by rowid asc",

@@ -2,11 +2,13 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Search, ShoppingCart, X } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getCartTotals, useCartStore } from "@/components/customer/cart-store";
 import { PhoneShell, PrimaryPhoneButton } from "@/components/customer/phone-shell";
+import { getContrastColor, hexToRgba, normalizeHexColor } from "@/lib/utils/color";
 import { formatCurrency } from "@/lib/utils/format";
 import { fetchJson } from "@/lib/utils/http";
 
@@ -21,6 +23,8 @@ type TruckStatus = {
   logoUrl: string | null;
   brandIcon: string;
   publicTagline: string;
+  instagramHandle: string | null;
+  primaryColor: string;
   todayHoursLabel: string;
 };
 
@@ -48,6 +52,7 @@ type SessionDraft = { name: string; phone: string };
 
 const EMPTY_CATEGORIES: MenuCategory[] = [];
 const MENU_ENTRY_SESSION_KEY = "foodtag-menu-entered";
+const CUSTOMER_STORAGE_KEY = "foodtag-customer";
 const ITEM_EMOJIS = ["🍔", "🍗", "🥓", "🍟", "🧀", "🥤", "💧", "🍫", "🍪"] as const;
 
 function itemEmoji(index: number) {
@@ -76,10 +81,12 @@ function TruckBrandFallback({
   brandIcon,
   label,
   logoUrl,
+  primaryColor,
 }: {
   brandIcon: string;
   label: string;
   logoUrl: string | null;
+  primaryColor: string;
 }) {
   if (logoUrl) {
     return (
@@ -89,9 +96,15 @@ function TruckBrandFallback({
   }
 
   return (
-    <span className="text-[52px] drop-shadow-[0_4px_12px_rgba(0,0,0,0.30)]">
-      {brandIcon}
-    </span>
+    <div
+      className="flex size-20 items-center justify-center rounded-[22px] text-[52px] shadow-[0_10px_26px_rgba(0,0,0,0.25)]"
+      style={{
+        backgroundColor: primaryColor,
+        color: getContrastColor(primaryColor),
+      }}
+    >
+      <span className="drop-shadow-[0_4px_12px_rgba(0,0,0,0.20)]">{brandIcon}</span>
+    </div>
   );
 }
 
@@ -99,6 +112,7 @@ export function MenuScreen() {
   const router = useRouter();
   const [draft, setDraft] = useState<SessionDraft>({ name: "", phone: "" });
   const [sessionCustomer, setSessionCustomer] = useState<Customer | null>(null);
+  const autoRestoredRef = useRef(false);
   const [hasEnteredMenu, setHasEnteredMenu] = useState(readMenuEntrySession);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [configItem, setConfigItem] = useState<MenuItem | null>(null);
@@ -115,6 +129,7 @@ export function MenuScreen() {
   const statusQuery = useQuery({
     queryKey: ["truck-status"],
     queryFn: () => fetchJson<TruckStatus>("/api/customer/truck-status"),
+    refetchOnWindowFocus: true,
   });
   const menuQuery = useQuery({
     queryKey: ["public-menu"],
@@ -139,6 +154,12 @@ export function MenuScreen() {
       setSessionCustomer(data.customer);
       setHasEnteredMenu(true);
       rememberMenuEntrySession();
+      try {
+        localStorage.setItem(
+          CUSTOMER_STORAGE_KEY,
+          JSON.stringify({ name: data.customer.name, phone: data.customer.phone }),
+        );
+      } catch { /* ignorar */ }
       void sessionQuery.refetch();
     },
     onError: (error) => {
@@ -146,9 +167,44 @@ export function MenuScreen() {
     },
   });
 
+  const { mutate: mutateSession } = sessionMutation;
+
+  // Auto-restore customer session from localStorage if the cookie expired.
+  // Runs once after the session query resolves to null.
+  useEffect(() => {
+    if (sessionQuery.isLoading) return;
+    if (sessionQuery.data?.customer) return;
+    if (autoRestoredRef.current) return;
+    autoRestoredRef.current = true;
+
+    try {
+      const saved = localStorage.getItem(CUSTOMER_STORAGE_KEY);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as { name?: string; phone?: string } | null;
+      if (parsed?.name && parsed?.phone) {
+        mutateSession({ name: parsed.name, phone: parsed.phone });
+      }
+    } catch { /* ignorar */ }
+  }, [sessionQuery.isLoading, sessionQuery.data?.customer, mutateSession]);
+
+  // Redirect to active ticket once session is confirmed (fresh or auto-restored).
+  useEffect(() => {
+    const resolvedCustomer = sessionCustomer ?? sessionQuery.data?.customer ?? null;
+    if (!resolvedCustomer) return;
+    try {
+      const pendingOrderId = localStorage.getItem("foodtag-pending-order-id");
+      if (pendingOrderId) {
+        localStorage.removeItem("foodtag-pending-order-id");
+        router.replace(`/ticket/${pendingOrderId}`);
+      }
+    } catch { /* ignorar */ }
+  }, [sessionCustomer, sessionQuery.data?.customer, router]);
+
   const categories = menuQuery.data?.categories ?? EMPTY_CATEGORIES;
   const customer = sessionCustomer ?? sessionQuery.data?.customer ?? null;
   const truck = statusQuery.data;
+  const accentColor = normalizeHexColor(truck?.primaryColor);
+  const accentTextColor = getContrastColor(accentColor);
   const showLanding = !customer || !hasEnteredMenu;
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const visibleCategories = useMemo(() => {
@@ -298,11 +354,17 @@ export function MenuScreen() {
               src={truck.heroImageUrl}
             />
           ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,#c2410c_0%,#f97316_45%,#fed7aa_100%)]">
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center gap-2"
+              style={{
+                background: `linear-gradient(135deg, ${hexToRgba(accentColor, 0.9)} 0%, ${accentColor} 48%, ${hexToRgba(accentColor, 0.28)} 100%)`,
+              }}
+            >
               <TruckBrandFallback
                 brandIcon={truck?.brandIcon ?? "🚚"}
                 label={truck?.truckName ?? "Foodtruck"}
                 logoUrl={truck?.logoUrl ?? null}
+                primaryColor={accentColor}
               />
               <span className="text-[11px] font-bold uppercase tracking-[2px] text-white/60">
                 {truck?.logoUrl ? "Logo del truck" : "Icono del truck"}
@@ -317,6 +379,13 @@ export function MenuScreen() {
             <p className="text-xs font-medium text-[#9a7560]">
               {truck?.publicTagline ?? "Food Truck · Av. Corrientes 1500"}
             </p>
+            {truck?.instagramHandle ? (
+              <h3 className="mt-1 text-[13px] font-black uppercase tracking-[1px] text-[#7c4a23]">
+                {truck.instagramHandle.startsWith("@")
+                  ? truck.instagramHandle
+                  : `@${truck.instagramHandle}`}
+              </h3>
+            ) : null}
           </div>
         </div>
 
@@ -367,7 +436,15 @@ export function MenuScreen() {
                 {formError}
               </p>
             ) : null}
-            <PrimaryPhoneButton disabled={sessionMutation.isPending} type="submit">
+            <PrimaryPhoneButton
+              disabled={sessionMutation.isPending}
+              style={{
+                backgroundColor: accentColor,
+                color: accentTextColor,
+                boxShadow: `0 4px 16px ${hexToRgba(accentColor, 0.35)}`,
+              }}
+              type="submit"
+            >
               {sessionMutation.isPending ? "Guardando..." : "Ver menú →"}
             </PrimaryPhoneButton>
           </form>
@@ -426,11 +503,16 @@ export function MenuScreen() {
             <button
               className={
                 category.id === activeCategory?.id
-                  ? "shrink-0 rounded-full bg-[#f97316] px-3.5 py-1.5 text-[13px] font-bold text-white"
+                  ? "shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-bold"
                   : "shrink-0 rounded-full bg-[#f0ddd0] px-3.5 py-1.5 text-[13px] font-bold text-[#6b4e35]"
               }
               key={category.id}
               onClick={() => setActiveCategoryId(category.id)}
+              style={
+                category.id === activeCategory?.id
+                  ? { backgroundColor: accentColor, color: accentTextColor }
+                  : undefined
+              }
               type="button"
             >
               {category.name}
@@ -439,7 +521,7 @@ export function MenuScreen() {
         </div>
       </header>
 
-      <div className={cartTotals.count > 0 ? "flex-1 overflow-y-auto pb-40 [scrollbar-width:none]" : "flex-1 overflow-y-auto pb-6 [scrollbar-width:none]"}>
+      <div className="flex-1 overflow-y-auto pb-6 [scrollbar-width:none]">
         {categoryItems.map((item, itemIndex) => {
           const quantity = cartItems
             .filter((entry) => entry.menuItemId === item.id)
@@ -478,7 +560,7 @@ export function MenuScreen() {
                   {item.description || "Sin descripción"}
                 </p>
                 <div className="flex items-center justify-between">
-                  <p className="text-base font-black text-[#f97316]">
+                  <p className="text-base font-black" style={{ color: accentColor }}>
                     {formatCurrency(item.priceCents)}
                   </p>
                   {isOrderable ? (
@@ -486,18 +568,20 @@ export function MenuScreen() {
                       <div className="flex items-center gap-1.5 rounded-full bg-[#fff1e6] p-1">
                         <button
                           aria-label={`Restar ${item.name}`}
-                          className="flex size-7 items-center justify-center rounded-full bg-white text-lg font-black text-[#f97316] shadow-[inset_0_0_0_1px_#fed7aa]"
+                          className="flex size-7 items-center justify-center rounded-full bg-white text-lg font-black shadow-[inset_0_0_0_1px_#fed7aa]"
+                          style={{ color: accentColor }}
                           onClick={() => decrementMenuItem(item.id)}
                           type="button"
                         >
                           -
                         </button>
-                        <span className="min-w-5 text-center text-sm font-black text-[#f97316]">
+                        <span className="min-w-5 text-center text-sm font-black" style={{ color: accentColor }}>
                           {quantity}
                         </span>
                         <button
                           aria-label={`Sumar ${item.name}`}
-                          className="flex size-7 items-center justify-center rounded-full bg-[#f97316] text-lg font-black text-white"
+                          className="flex size-7 items-center justify-center rounded-full text-lg font-black"
+                          style={{ backgroundColor: accentColor, color: accentTextColor }}
                           onClick={() => openConfig(item)}
                           type="button"
                         >
@@ -506,7 +590,12 @@ export function MenuScreen() {
                       </div>
                     ) : (
                       <button
-                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-[#f97316] text-[22px] font-black leading-none text-white shadow-[0_2px_8px_rgba(249,115,22,0.30)]"
+                        className="flex size-[34px] items-center justify-center rounded-[10px] text-[22px] font-black leading-none shadow-[0_2px_8px_rgba(0,0,0,0.18)]"
+                        style={{
+                          backgroundColor: accentColor,
+                          color: accentTextColor,
+                          boxShadow: `0 2px 8px ${hexToRgba(accentColor, 0.3)}`,
+                        }}
                         onClick={() => openConfig(item)}
                         type="button"
                       >
@@ -542,7 +631,7 @@ export function MenuScreen() {
       </div>
 
       {cartTotals.count > 0 ? (
-        <div className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,#fff8f1_82%,rgba(255,248,241,0))] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5">
+        <div className="shrink-0 bg-[linear-gradient(to_top,#fff8f1_82%,rgba(255,248,241,0))] px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-5">
           <div className="flex items-center gap-3 rounded-[18px] bg-white p-3 shadow-[0_-6px_28px_rgba(63,43,27,0.10),0_1px_0_rgba(240,221,208,0.9)]">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-black text-[#9a7560]">
@@ -552,20 +641,26 @@ export function MenuScreen() {
                 {formatCurrency(cartTotals.subtotalCents)}
               </p>
             </div>
-            <button
-              className="flex min-h-12 flex-[1.35] items-center justify-center gap-2 rounded-[14px] bg-[#f97316] px-4 text-[15px] font-black text-white shadow-[0_4px_16px_rgba(249,115,22,0.28)] transition active:scale-[0.98] active:bg-[#c2410c]"
-              onClick={() => router.push("/cart")}
-              type="button"
+            <Link
+              className="flex min-h-12 flex-[1.35] items-center justify-center gap-2 rounded-[14px] px-4 text-[15px] font-black shadow-[0_4px_16px_rgba(0,0,0,0.18)] transition active:scale-[0.98]"
+              href="/cart"
+              style={{
+                backgroundColor: accentColor,
+                color: accentTextColor,
+                boxShadow: `0 4px 16px ${hexToRgba(accentColor, 0.28)}`,
+              }}
             >
               <ShoppingCart aria-hidden="true" size={18} />
               Ver carrito
-            </button>
+            </Link>
           </div>
         </div>
       ) : null}
 
       {configItem ? (
         <ConfigSheet
+          accentColor={accentColor}
+          accentTextColor={accentTextColor}
           item={configItem}
           onClose={() => setConfigItem(null)}
           onConfirm={confirmConfig}
@@ -595,6 +690,8 @@ function PhoneField({
 }
 
 function ConfigSheet({
+  accentColor,
+  accentTextColor,
   item,
   onClose,
   onConfirm,
@@ -603,6 +700,8 @@ function ConfigSheet({
   setSelectedModifiers,
   setSelectedVariantId,
 }: {
+  accentColor: string;
+  accentTextColor: string;
   item: MenuItem;
   onClose: () => void;
   onConfirm: () => void;
@@ -644,26 +743,40 @@ function ConfigSheet({
                   <button
                     className={
                       selected
-                        ? "mb-2 flex w-full items-center justify-between rounded-xl border-2 border-[#f97316] bg-[#fff1e6] px-4 py-3 text-[15px] font-semibold"
+                        ? "mb-2 flex w-full items-center justify-between rounded-xl border-2 px-4 py-3 text-[15px] font-semibold"
                         : "mb-2 flex w-full items-center justify-between rounded-xl border-2 border-[#eee] bg-[#f9f9f9] px-4 py-3 text-[15px] font-semibold"
                     }
                     key={variant.id}
                     onClick={() => setSelectedVariantId(variant.id)}
+                    style={
+                      selected
+                        ? {
+                            backgroundColor: hexToRgba(accentColor, 0.12),
+                            borderColor: accentColor,
+                          }
+                        : undefined
+                    }
                     type="button"
                   >
                     <span className="flex items-center gap-2.5">
                       <span
                         className={
                           selected
-                            ? "flex size-[18px] items-center justify-center rounded-full border-2 border-[#f97316]"
+                            ? "flex size-[18px] items-center justify-center rounded-full border-2"
                             : "flex size-[18px] items-center justify-center rounded-full border-2 border-[#ccc]"
                         }
+                        style={selected ? { borderColor: accentColor } : undefined}
                       >
-                        {selected ? <span className="size-[9px] rounded-full bg-[#f97316]" /> : null}
+                        {selected ? (
+                          <span
+                            className="size-[9px] rounded-full"
+                            style={{ backgroundColor: accentColor }}
+                          />
+                        ) : null}
                       </span>
                       {variant.name}
                     </span>
-                    <span className="font-black text-[#f97316]">
+                    <span className="font-black" style={{ color: accentColor }}>
                       {formatCurrency(variant.priceCents)}
                     </span>
                   </button>
@@ -684,7 +797,7 @@ function ConfigSheet({
                 <button
                   className={
                     checked
-                      ? "mb-2 flex w-full items-center gap-3 rounded-xl border-2 border-[#f97316] bg-[#fff1e6] px-4 py-3 text-left"
+                      ? "mb-2 flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-left"
                       : "mb-2 flex w-full items-center gap-3 rounded-xl border-2 border-[#eee] bg-[#f9f9f9] px-4 py-3 text-left"
                   }
                   key={modifier.id}
@@ -694,13 +807,30 @@ function ConfigSheet({
                       [modifier.id]: !checked,
                     }))
                   }
+                  style={
+                    checked
+                      ? {
+                          backgroundColor: hexToRgba(accentColor, 0.12),
+                          borderColor: accentColor,
+                        }
+                      : undefined
+                  }
                   type="button"
                 >
                   <span
                     className={
                       checked
-                        ? "flex size-[22px] shrink-0 items-center justify-center rounded-md border-2 border-[#f97316] bg-[#f97316] text-sm font-black text-white"
+                        ? "flex size-[22px] shrink-0 items-center justify-center rounded-md border-2 text-sm font-black"
                         : "size-[22px] shrink-0 rounded-md border-2 border-[#ccc] bg-white"
+                    }
+                    style={
+                      checked
+                        ? {
+                            backgroundColor: accentColor,
+                            borderColor: accentColor,
+                            color: accentTextColor,
+                          }
+                        : undefined
                     }
                   >
                     {checked ? "✓" : ""}
@@ -722,6 +852,11 @@ function ConfigSheet({
         <PrimaryPhoneButton
           disabled={item.hasVariants && !selectedVariant}
           onClick={onConfirm}
+          style={{
+            backgroundColor: accentColor,
+            boxShadow: `0 4px 16px ${hexToRgba(accentColor, 0.35)}`,
+            color: accentTextColor,
+          }}
           type="button"
         >
           {item.hasVariants && !selectedVariant

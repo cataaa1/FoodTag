@@ -1,6 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Mono, DM_Sans } from "next/font/google";
 
+import { BrandThemeProvider } from "@/components/providers/brand-theme-provider";
+import { SwRegistration } from "@/components/providers/sw-registration";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -20,6 +22,16 @@ const dmMono = DM_Mono({
 export const metadata: Metadata = {
   title: "FoodTag",
   description: "Pedidos autoservicio para food trucks con beeper digital.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "FoodTag",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#F97316",
 };
 
 export default function RootLayout({
@@ -31,7 +43,12 @@ export default function RootLayout({
     <html lang="es-AR" className={`${dmSans.variable} ${dmMono.variable}`}>
       <body className="antialiased">
         <TooltipProvider>
-          <QueryProvider>{children}</QueryProvider>
+          <QueryProvider>
+            <BrandThemeProvider>
+              <SwRegistration />
+              {children}
+            </BrandThemeProvider>
+          </QueryProvider>
         </TooltipProvider>
       </body>
     </html>

@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
+import { writeAuditLog } from "@/lib/data/audit-log";
 import { getTruckConfig } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
 import { adminSettingsPatchSchema } from "@/lib/validators/settings";
@@ -23,7 +24,7 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    await requireStaffPermission("settings.write");
+    const context = await requireStaffPermission("settings.write");
     const body = await parseJsonBody(request, adminSettingsPatchSchema);
     const config = await getTruckConfig();
     const db = getDb();
@@ -37,6 +38,8 @@ export async function PATCH(request: Request) {
             brand_icon = @brandIcon,
             primary_color = @primaryColor,
             timezone = @timezone,
+            beep_sound_id = @beepSoundId,
+            customer_pickup_cooldown_seconds = @customerPickupCooldownSeconds,
             updated_at = datetime('now')
           where id = @id
         `,
@@ -47,6 +50,8 @@ export async function PATCH(request: Request) {
         brandIcon: body.brandIcon,
         primaryColor: body.primaryColor,
         timezone: body.timezone,
+        beepSoundId: body.beepSoundId,
+        customerPickupCooldownSeconds: body.customerPickupCooldownSeconds,
       });
 
       db.prepare(
@@ -79,6 +84,20 @@ export async function PATCH(request: Request) {
     });
 
     transaction();
+
+    writeAuditLog({
+      actorUserId: context.user.id,
+      action: "truck.settings.updated",
+      targetType: "truck_config",
+      targetId: config.id,
+      metadata: {
+        allowOrderModifications: body.allowOrderModifications,
+        beepSoundId: body.beepSoundId,
+        customerPickupCooldownSeconds: body.customerPickupCooldownSeconds,
+        primaryColor: body.primaryColor,
+        timezone: body.timezone,
+      },
+    });
 
     revalidatePath("/menu");
     revalidatePath("/admin");

@@ -2,10 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
 import { EmptyState } from "@/components/shared/empty-state";
+import { useTransientMessage } from "@/hooks/use-transient-message";
+import { optimizeImageFile } from "@/lib/utils/client-image";
 import { fetchJson } from "@/lib/utils/http";
 
 type Category = {
@@ -89,6 +91,9 @@ const EMPTY_ITEM_FORM: ItemForm = {
 
 const EMPTY_CATEGORIES: Category[] = [];
 const EMPTY_ITEMS: MenuItem[] = [];
+const MAX_IMAGE_UPLOAD_BYTES = 1_600_000;
+const MAX_IMAGE_DIMENSION = 1600;
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
 function formatPrice(cents: number) {
   return new Intl.NumberFormat("es-AR", {
@@ -122,6 +127,10 @@ export function MenuManager() {
   const [itemForm, setItemForm] = useState<ItemForm>(EMPTY_ITEM_FORM);
   const [showItemModal, setShowItemModal] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useTransientMessage(feedback, () => setFeedback(null));
+  useTransientMessage(error, () => setError(null), 4_200);
 
   const categoriesQuery = useQuery({
     queryKey: ["admin", "categories"],
@@ -156,6 +165,7 @@ export function MenuManager() {
       queryClient.invalidateQueries({ queryKey: ["admin", "menu-items"] }),
       queryClient.invalidateQueries({ queryKey: ["truck-status"] }),
       queryClient.invalidateQueries({ queryKey: ["public-menu"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin", "dashboard", "today"] }),
     ]);
   }
 
@@ -182,10 +192,19 @@ export function MenuManager() {
       });
     },
     onSuccess: async () => {
+      setError(null);
       setFeedback("Categoría guardada");
       setCategoryForm(EMPTY_CATEGORY_FORM);
       setShowCategoryForm(false);
       await refreshAll();
+    },
+    onError: (mutationError) => {
+      setFeedback(null);
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "No pudimos guardar la categoría",
+      );
     },
   });
 
@@ -232,9 +251,16 @@ export function MenuManager() {
       });
     },
     onSuccess: async () => {
+      setError(null);
       setFeedback("Ítem guardado");
       closeItemModal();
       await refreshAll();
+    },
+    onError: (mutationError) => {
+      setFeedback(null);
+      setError(
+        mutationError instanceof Error ? mutationError.message : "No pudimos guardar el ítem",
+      );
     },
   });
 
@@ -245,7 +271,18 @@ export function MenuManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ available: !item.available }),
       }),
-    onSuccess: refreshAll,
+    onSuccess: async () => {
+      setError(null);
+      await refreshAll();
+    },
+    onError: (mutationError) => {
+      setFeedback(null);
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "No pudimos actualizar la disponibilidad",
+      );
+    },
   });
 
   const deleteMutation = useMutation({
@@ -258,12 +295,22 @@ export function MenuManager() {
       return fetchJson(pathMap[input.kind], { method: "DELETE" });
     },
     onSuccess: async () => {
+      setError(null);
       setFeedback("Registro eliminado");
       await refreshAll();
+    },
+    onError: (mutationError) => {
+      setFeedback(null);
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "No pudimos eliminar el registro",
+      );
     },
   });
 
   function openNewItemModal() {
+    setError(null);
     setItemForm({
       ...EMPTY_ITEM_FORM,
       categoryId: activeCategoryId,
@@ -273,6 +320,7 @@ export function MenuManager() {
   }
 
   function openEditItemModal(item: MenuItem) {
+    setError(null);
     setItemForm(itemToForm(item));
     setShowItemModal(true);
   }
@@ -322,6 +370,65 @@ export function MenuManager() {
     }));
   }
 
+  function importItemImage(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type as (typeof ACCEPTED_IMAGE_TYPES)[number])) {
+      setFeedback(null);
+      setError("Usá una imagen JPG, PNG o WEBP");
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      setFeedback(null);
+      setError("La imagen no puede superar los 2MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setError(null);
+      setItemForm((current) => ({ ...current, photoUrl: String(reader.result) }));
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function importOptimizedItemImage(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type as (typeof ACCEPTED_IMAGE_TYPES)[number])) {
+      setFeedback(null);
+      setError("Usá una imagen JPG, PNG o WEBP");
+      return;
+    }
+
+    try {
+      const optimized = await optimizeImageFile(file, {
+        maxBytes: MAX_IMAGE_UPLOAD_BYTES,
+        maxDimension: MAX_IMAGE_DIMENSION,
+      });
+
+      setFeedback(
+        `Imagen optimizada a ${optimized.width}x${optimized.height} para que no pese más de 1.6MB`,
+      );
+      setError(null);
+      setItemForm((current) => ({ ...current, photoUrl: optimized.dataUrl }));
+    } catch (imageError) {
+      setFeedback(null);
+      setError(
+        imageError instanceof Error
+          ? imageError.message
+          : "No pudimos procesar la imagen",
+      );
+    }
+  }
+
+  void importItemImage;
+
   return (
     <AdminShell
       action={
@@ -333,8 +440,13 @@ export function MenuManager() {
       title="Gestión de menú"
     >
       {feedback ? (
-        <div className="mb-5 rounded-[10px] border border-[#f97316]/25 bg-[#fff0e6] px-4 py-3 text-[13px] font-bold text-[#f97316]">
+        <div className="brand-accent-notice mb-5 rounded-[10px] border px-4 py-3 text-[13px] font-bold">
           {feedback}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="mb-5 rounded-[10px] border border-[#ef4444]/25 bg-[#ef4444]/10 px-4 py-3 text-[13px] font-bold text-[#ef4444]">
+          {error}
         </div>
       ) : null}
 
@@ -350,18 +462,24 @@ export function MenuManager() {
 
               return (
                 <button
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[13px] font-semibold transition"
                   key={category.id}
                   onClick={() => setActiveCategoryId(category.id)}
-                  style={{
-                    background: active ? "#fff0e6" : "transparent",
-                    color: active ? "#f97316" : "var(--text2, #555)",
-                  }}
+                  className={
+                    active
+                      ? "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[13px] font-semibold transition"
+                      : "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[13px] font-semibold text-[#555] transition dark:text-[#b4b4b4]"
+                  }
+                  style={
+                    active
+                      ? {
+                          backgroundColor: "var(--admin-accent-soft)",
+                          color: "var(--admin-accent)",
+                        }
+                      : undefined
+                  }
                   type="button"
                 >
-                  <span className={!category.visible ? "opacity-50" : ""}>
-                    {category.name}
-                  </span>
+                  <span className={!category.visible ? "opacity-50" : ""}>{category.name}</span>
                   <span className="text-[11px] font-bold">{count}</span>
                 </button>
               );
@@ -370,7 +488,7 @@ export function MenuManager() {
 
           <div className="my-2 h-px bg-[#e8e8e8] dark:bg-[#2e2e2e]" />
           <button
-            className="w-full rounded-lg border border-dashed border-[#e8e8e8] bg-transparent px-3 py-2.5 text-xs font-semibold text-[#999] transition hover:border-[#f97316] hover:text-[#f97316]"
+            className="brand-accent-dashed-action w-full rounded-lg px-3 py-2.5"
             onClick={() => {
               setCategoryForm({ ...EMPTY_CATEGORY_FORM, position: String(categories.length) });
               setShowCategoryForm(true);
@@ -391,9 +509,7 @@ export function MenuManager() {
               </button>
               <button
                 className="rounded-lg bg-[#ef4444]/10 px-2 py-2 text-[11px] font-bold text-[#ef4444]"
-                onClick={() =>
-                  deleteMutation.mutate({ kind: "category", id: activeCategory.id })
-                }
+                onClick={() => deleteMutation.mutate({ kind: "category", id: activeCategory.id })}
                 type="button"
               >
                 Borrar
@@ -426,7 +542,7 @@ export function MenuManager() {
               />
             ))}
             <button
-              className="flex min-h-[200px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#e8e8e8] bg-transparent p-4 text-[#999] transition hover:border-[#f97316] hover:text-[#f97316] dark:border-[#2e2e2e]"
+              className="brand-accent-dashed-action flex min-h-[200px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 p-4 dark:border-[#2e2e2e]"
               onClick={openNewItemModal}
               type="button"
             >
@@ -452,6 +568,7 @@ export function MenuManager() {
           onAddVariant={addVariantRow}
           onChange={setItemForm}
           onClose={closeItemModal}
+          onImportImage={importOptimizedItemImage}
           onSubmit={() => itemMutation.mutate()}
         />
       ) : null}
@@ -525,11 +642,7 @@ function MenuItemCard({
       <div className="mb-3 flex h-[100px] w-full items-center justify-center overflow-hidden rounded-lg bg-[#f2f2f2] text-center text-xs font-semibold text-[#999] dark:bg-[#242424]">
         {item.photo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            alt={item.name}
-            className="size-full object-cover"
-            src={item.photo_url}
-          />
+          <img alt={item.name} className="size-full object-cover" src={item.photo_url} />
         ) : (
           "foto del ítem"
         )}
@@ -537,14 +650,14 @@ function MenuItemCard({
       <div className="mb-1 flex items-start justify-between gap-3">
         <h2 className="text-sm font-bold text-[#111] dark:text-[#f5f5f5]">{item.name}</h2>
         <button
-          className="flex size-7 items-center justify-center rounded-lg bg-[#f2f2f2] text-sm text-[#999] transition hover:text-[#f97316] dark:bg-[#242424]"
+          className="brand-accent-icon-button flex size-7 items-center justify-center rounded-lg bg-[#f2f2f2] text-sm dark:bg-[#242424]"
           onClick={onEdit}
           type="button"
         >
           ✏
         </button>
       </div>
-      <div className="mb-1 text-sm font-bold text-[#f97316]">
+      <div className="mb-1 text-sm font-bold" style={{ color: "var(--admin-accent)" }}>
         {item.has_variants && item.variants[0]
           ? `Desde ${formatPrice(item.variants[0].price_cents)}`
           : formatPrice(item.price_cents)}
@@ -557,7 +670,7 @@ function MenuItemCard({
           {item.variants.length ? (
             item.variants.map((variant) => (
               <span
-                className="rounded-[5px] bg-[#fff0e6] px-2 py-0.5 text-[10px] font-semibold text-[#f97316]"
+                className="brand-accent-chip rounded-[5px] px-2 py-0.5 text-[10px] font-semibold"
                 key={variant.id ?? variant.name}
                 title={`${variant.name} · ${formatPrice(variant.price_cents)}${
                   variant.available ? "" : " · agotada"
@@ -619,6 +732,7 @@ function ItemModal({
   onAddVariant,
   onChange,
   onClose,
+  onImportImage,
   onSubmit,
 }: {
   categories: Category[];
@@ -627,9 +741,11 @@ function ItemModal({
   onAddVariant: () => void;
   onChange: React.Dispatch<React.SetStateAction<ItemForm>>;
   onClose: () => void;
+  onImportImage: (file: File | undefined) => void;
   onSubmit: () => void;
 }) {
   const hasMods = form.modifiers.length > 0;
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   return (
     <div
@@ -708,12 +824,47 @@ function ItemModal({
               onChange={(event) =>
                 onChange((current) => ({ ...current, photoUrl: event.target.value }))
               }
-              placeholder="https://..."
+              placeholder="https://... o pegá una data URL"
               value={form.photoUrl}
             />
           </Field>
-          <div className="flex h-20 w-full cursor-pointer items-center justify-center rounded-[10px] border-2 border-dashed border-[#e8e8e8] bg-[#f2f2f2] text-xs font-semibold text-[#999] dark:border-[#2e2e2e] dark:bg-[#242424]">
-            + Subir imagen
+          <div className="rounded-[12px] border border-[#e8e8e8] bg-[#fafafa] p-3 dark:border-[#2e2e2e] dark:bg-[#242424]">
+            <div className="mb-3 flex h-28 w-full items-center justify-center overflow-hidden rounded-[10px] bg-[#f2f2f2] text-xs font-semibold text-[#999] dark:bg-[#1a1a1a]">
+              {form.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img alt="Vista previa del ítem" className="size-full object-cover" src={form.photoUrl} />
+              ) : (
+                "Sin imagen cargada"
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="admin-muted-button"
+                onClick={() => imageInputRef.current?.click()}
+                type="button"
+              >
+                Subir imagen
+              </button>
+              {form.photoUrl ? (
+                <button
+                  className="admin-muted-button"
+                  onClick={() => onChange((current) => ({ ...current, photoUrl: "" }))}
+                  type="button"
+                >
+                  Quitar imagen
+                </button>
+              ) : null}
+            </div>
+            <p className="mt-2 text-[11px] font-semibold text-[#777] dark:text-[#b4b4b4]">
+              La imagen se adapta automáticamente hasta {MAX_IMAGE_DIMENSION}px y 1.6MB.
+            </p>
+            <input
+              accept={ACCEPTED_IMAGE_TYPES.join(",")}
+              className="hidden"
+              onChange={(event) => onImportImage(event.target.files?.[0])}
+              ref={imageInputRef}
+              type="file"
+            />
           </div>
           <ToggleRow
             checked={form.available}
@@ -843,7 +994,6 @@ function ItemModal({
                           ),
                         }))
                       }
-                      tone="green"
                     />
                   </div>
                   <RemoveButton
@@ -901,9 +1051,7 @@ function OptionHeader({
   return (
     <div className="mb-3 flex items-center justify-between gap-4">
       <div>
-        <div className="text-[13px] font-black text-[#111] dark:text-[#f5f5f5]">
-          {label}
-        </div>
+        <div className="text-[13px] font-black text-[#111] dark:text-[#f5f5f5]">{label}</div>
         <div className="text-[11px] text-[#999]">{description}</div>
       </div>
       <Toggle checked={checked} onChange={() => onChange(!checked)} />
@@ -934,15 +1082,9 @@ function Toggle({
 }: {
   checked: boolean;
   onChange: () => void;
-  tone?: "green" | "orange";
 }) {
   return (
-    <button
-      className="admin-toggle"
-      data-checked={checked}
-      onClick={onChange}
-      type="button"
-    >
+    <button className="admin-toggle" data-checked={checked} onClick={onChange} type="button">
       <span className="admin-toggle-thumb" />
     </button>
   );

@@ -22,6 +22,7 @@ import type {
   OrderStatus,
   PermissionKey,
 } from "@/lib/types/domain";
+import { getContrastColor, normalizeHexColor } from "@/lib/utils/color";
 import { formatCurrency } from "@/lib/utils/format";
 import { fetchJson } from "@/lib/utils/http";
 
@@ -49,6 +50,7 @@ type StaffOrder = {
   pulseAt: string | null;
   readyAt: string | null;
   deliveredAt: string | null;
+  pickedUpAt: string | null;
   createdAt: string;
   items: StaffOrderItem[];
   modificationRequests: OrderModificationRequest[];
@@ -70,6 +72,8 @@ type TruckIdentity = {
   truckName: string;
   brandIcon: string;
   logoUrl: string | null;
+  primaryColor: string;
+  customerPickupCooldownSeconds: number;
 };
 
 type AdvanceItemInput = {
@@ -83,6 +87,8 @@ type ModificationInput = {
 };
 
 type KitchenTicketActions = {
+  accentColor: string;
+  accentTextColor: string;
   canAdvance: boolean;
   canApproveMod: boolean;
   canPulse: boolean;
@@ -108,6 +114,7 @@ type KitchenTicketActions = {
 
 const EMPTY_ORDERS: StaffOrder[] = [];
 const EMPTY_PERMISSIONS: PermissionKey[] = [];
+const DEFAULT_PICKUP_HIDE_DELAY_MS = 15_000;
 
 const KITCHEN_COLUMNS: Array<{
   status: KitchenColumnStatus;
@@ -216,6 +223,22 @@ function formatElapsedTime(createdAt: string, now: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function shouldShowKitchenOrder(
+  order: StaffOrder,
+  now: number,
+  pickupHideDelayMs: number,
+) {
+  if (order.status === "delivered") {
+    return false;
+  }
+
+  if (!order.pickedUpAt) {
+    return true;
+  }
+
+  return now - parseDate(order.pickedUpAt).getTime() < pickupHideDelayMs;
+}
+
 function hasPermission(permissions: PermissionKey[], permission: PermissionKey) {
   return permissions.includes(permission);
 }
@@ -248,6 +271,7 @@ export function StaffKanban() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [viewMode, setViewMode] = useState<KitchenViewMode>("tickets");
+  const [recentDeliveredOrders, setRecentDeliveredOrders] = useState<StaffOrder[]>([]);
   const seenPendingModificationIds = useRef<Set<string>>(new Set());
 
   const ordersQuery = useQuery({
@@ -263,9 +287,16 @@ export function StaffKanban() {
   const orders = ordersQuery.data?.orders ?? EMPTY_ORDERS;
   const identity = identityQuery.data;
   const permissions = ordersQuery.data?.permissions ?? EMPTY_PERMISSIONS;
+  const accentColor = normalizeHexColor(identity?.primaryColor);
+  const accentTextColor = getContrastColor(accentColor);
   const canAdvance = hasPermission(permissions, "orders.advance");
   const canPulse = hasPermission(permissions, "orders.pulse");
   const canApproveMod = hasPermission(permissions, "orders.approve_mod");
+  const pickupHideDelayMs = Math.max(
+    0,
+    identity?.customerPickupCooldownSeconds ??
+      DEFAULT_PICKUP_HIDE_DELAY_MS / 1_000,
+  ) * 1_000;
 
   const sortedOrders = useMemo(
     () =>
@@ -276,12 +307,19 @@ export function StaffKanban() {
     [orders],
   );
   const visibleOrders = useMemo(
-    () => sortedOrders.filter((order) => order.status !== "delivered"),
-    [sortedOrders],
+    () =>
+      sortedOrders.filter((order) =>
+        shouldShowKitchenOrder(order, now, pickupHideDelayMs),
+      ),
+    [now, pickupHideDelayMs, sortedOrders],
+  );
+  const bumpTarget = useMemo(
+    () => visibleOrders.find((order) => order.status !== "delivered") ?? null,
+    [visibleOrders],
   );
   const unbumpTarget = useMemo(
     () =>
-      sortedOrders.reduce<StaffOrder | null>((target, order) => {
+      recentDeliveredOrders.reduce<StaffOrder | null>((target, order) => {
         if (order.status !== "delivered") return target;
         if (!target) return order;
 
@@ -298,7 +336,7 @@ export function StaffKanban() {
 
         return order.ticketNumber > target.ticketNumber ? order : target;
       }, null),
-    [sortedOrders],
+    [recentDeliveredOrders],
   );
 
   useEffect(() => {
@@ -306,6 +344,49 @@ export function StaffKanban() {
 
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    const deliveredOrders = orders.filter((order) => order.status === "delivered");
+
+    setRecentDeliveredOrders((current) => {
+      const nextById = new Map(current.map((order) => [order.id, order]));
+
+      orders.forEach((order) => {
+        if (order.status !== "delivered" && nextById.has(order.id)) {
+          nextById.delete(order.id);
+        }
+      });
+
+      deliveredOrders.forEach((order) => {
+        nextById.set(order.id, order);
+      });
+
+      return [...nextById.values()]
+        .sort((first, second) => {
+          const firstDeliveredAt = first.deliveredAt
+            ? parseDate(first.deliveredAt).getTime()
+            : 0;
+          const secondDeliveredAt = second.deliveredAt
+            ? parseDate(second.deliveredAt).getTime()
+            : 0;
+
+          if (firstDeliveredAt !== secondDeliveredAt) {
+            return secondDeliveredAt - firstDeliveredAt;
+          }
+
+          return second.ticketNumber - first.ticketNumber;
+        })
+        .slice(0, 12);
+    });
+  }, [orders]);
+
+  useEffect(() => {
+    if (feedback !== "Nueva modificaciÃ³n solicitada") return;
+
+    const timeoutId = window.setTimeout(() => setFeedback(null), 3_500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [feedback]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -360,7 +441,6 @@ export function StaffKanban() {
       ),
     onSuccess: async () => {
       setActionError(null);
-      setFeedback("Ticket actualizado");
       await refreshOrders();
     },
     onError: (error) => {
@@ -374,9 +454,13 @@ export function StaffKanban() {
         `/api/staff/orders/${order.id}/bump`,
         { method: "POST" },
       ),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       setActionError(null);
-      setFeedback("Pedido entregado");
+      if (data.order?.status === "delivered") {
+        setRecentDeliveredOrders((current) =>
+          [data.order!, ...current.filter((order) => order.id !== data.order!.id)].slice(0, 12),
+        );
+      }
       await refreshOrders();
     },
     onError: (error) => {
@@ -390,9 +474,11 @@ export function StaffKanban() {
         `/api/staff/orders/${order.id}/unbump`,
         { method: "POST" },
       ),
-    onSuccess: async () => {
+    onSuccess: async (data, variables) => {
       setActionError(null);
-      setFeedback("Pedido vuelve a listo");
+      setRecentDeliveredOrders((current) =>
+        current.filter((order) => order.id !== (data.order?.id ?? variables.id)),
+      );
       await refreshOrders();
     },
     onError: (error) => {
@@ -408,7 +494,6 @@ export function StaffKanban() {
       ),
     onSuccess: async () => {
       setActionError(null);
-      setFeedback("Cliente llamado nuevamente");
       await refreshOrders();
     },
     onError: (error) => {
@@ -428,7 +513,6 @@ export function StaffKanban() {
       ),
     onSuccess: async () => {
       setActionError(null);
-      setFeedback("Modificación aprobada");
       await refreshOrders();
     },
     onError: (error) => {
@@ -450,7 +534,6 @@ export function StaffKanban() {
       ),
     onSuccess: async () => {
       setActionError(null);
-      setFeedback("Modificación rechazada");
       await refreshOrders();
     },
     onError: (error) => {
@@ -461,6 +544,8 @@ export function StaffKanban() {
   });
 
   const ticketActions: KitchenTicketActions = {
+    accentColor,
+    accentTextColor,
     canAdvance,
     canApproveMod,
     canPulse,
@@ -492,6 +577,7 @@ export function StaffKanban() {
             <BrandMark
               brandIcon={identity?.brandIcon ?? "FT"}
               logoUrl={identity?.logoUrl ?? null}
+              primaryColor={identity?.primaryColor ?? "#f97316"}
             />
             <div>
               <h1 className="text-base font-black tracking-[-0.3px]">
@@ -509,7 +595,7 @@ export function StaffKanban() {
               <span className="text-xs font-black text-[#22c55e]">En vivo</span>
             </div>
             <button
-              className="flex items-center gap-2 rounded-[10px] border border-[#2e2e2e] bg-[#242424] px-4 py-2 text-[13px] font-bold text-[#a0a0a0] transition hover:border-[#f97316] hover:text-white disabled:opacity-50"
+              className="brand-accent-hover-border flex items-center gap-2 rounded-[10px] border border-[#2e2e2e] bg-[#242424] px-4 py-2 text-[13px] font-bold text-[#a0a0a0] disabled:opacity-50"
               disabled={ordersQuery.isFetching}
               onClick={() => void ordersQuery.refetch()}
               type="button"
@@ -518,7 +604,7 @@ export function StaffKanban() {
               Actualizar
             </button>
             <Link
-              className="flex items-center gap-2 rounded-[10px] border border-[#2e2e2e] px-4 py-2 text-[13px] font-bold text-[#a0a0a0] transition hover:border-[#f97316] hover:text-white"
+              className="brand-accent-hover-border flex items-center gap-2 rounded-[10px] border border-[#2e2e2e] px-4 py-2 text-[13px] font-bold text-[#a0a0a0]"
               href="/admin"
             >
               <Settings className="size-4" />
@@ -550,12 +636,20 @@ export function StaffKanban() {
               {visibleOrders.length} en cocina
             </h2>
           </div>
-          <ViewModeTabs onChange={setViewMode} value={viewMode} />
+          <ViewModeTabs
+            accentColor={accentColor}
+            accentTextColor={accentTextColor}
+            onChange={setViewMode}
+            value={viewMode}
+          />
         </div>
 
-        <GlobalUnbumpBar
+        <GlobalBumpBar
+          bumpTarget={bumpTarget}
           canAdvance={canAdvance}
+          isBumping={bumpMutation.isPending}
           isUnbumping={unbumpMutation.isPending}
+          onBump={(order) => bumpMutation.mutate(order)}
           onUnbump={(order) => unbumpMutation.mutate(order)}
           unbumpTarget={unbumpTarget}
         />
@@ -590,29 +684,49 @@ export function StaffKanban() {
   );
 }
 
-function GlobalUnbumpBar({
+function GlobalBumpBar({
+  bumpTarget,
   canAdvance,
+  isBumping,
   isUnbumping,
+  onBump,
   onUnbump,
   unbumpTarget,
 }: {
+  bumpTarget: StaffOrder | null;
   canAdvance: boolean;
+  isBumping: boolean;
   isUnbumping: boolean;
+  onBump: (order: StaffOrder) => void;
   onUnbump: (order: StaffOrder) => void;
   unbumpTarget: StaffOrder | null;
 }) {
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#2e2e2e] bg-[#151515] p-3">
       <div className="flex flex-wrap items-center gap-2">
+        <GlobalTarget label="Primer ticket" order={bumpTarget} tone="green" />
         <GlobalTarget label="Ultimo entregado" order={unbumpTarget} tone="neutral" />
       </div>
 
-      <div className="w-full sm:w-auto sm:min-w-[180px]">
+      <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-[360px]">
+        <div className="min-w-0">
+          <ActionButton
+            disabled={!canAdvance || isBumping}
+            icon={<PackageCheck />}
+            onClick={() => {
+              if (bumpTarget) onBump(bumpTarget);
+            }}
+            tone="green"
+          >
+            {isBumping ? "Entregando..." : "Bump"}
+          </ActionButton>
+        </div>
+
         <ActionButton
-          disabled={!canAdvance || isUnbumping || !unbumpTarget}
+          disabled={!canAdvance || isUnbumping}
           icon={<RotateCcw />}
           onClick={() => {
-            if (unbumpTarget) onUnbump(unbumpTarget);
+              if (unbumpTarget) onUnbump(unbumpTarget);
           }}
           tone="neutral"
         >
@@ -648,9 +762,13 @@ function GlobalTarget({
 }
 
 function ViewModeTabs({
+  accentColor,
+  accentTextColor,
   onChange,
   value,
 }: {
+  accentColor: string;
+  accentTextColor: string;
   onChange: (value: KitchenViewMode) => void;
   value: KitchenViewMode;
 }) {
@@ -662,12 +780,16 @@ function ViewModeTabs({
     >
       <ViewModeButton
         active={value === "tickets"}
+        accentColor={accentColor}
+        accentTextColor={accentTextColor}
         icon={<LayoutGrid />}
         label="Tickets"
         onClick={() => onChange("tickets")}
       />
       <ViewModeButton
         active={value === "kanban"}
+        accentColor={accentColor}
+        accentTextColor={accentTextColor}
         icon={<Columns3 />}
         label="Kanban"
         onClick={() => onChange("kanban")}
@@ -678,11 +800,15 @@ function ViewModeTabs({
 
 function ViewModeButton({
   active,
+  accentColor,
+  accentTextColor,
   icon,
   label,
   onClick,
 }: {
   active: boolean;
+  accentColor: string;
+  accentTextColor: string;
   icon: ReactNode;
   label: string;
   onClick: () => void;
@@ -692,11 +818,19 @@ function ViewModeButton({
       aria-selected={active}
       className={
         active
-          ? "flex min-h-9 items-center gap-2 rounded-[9px] bg-[#f97316] px-3 py-1.5 text-sm font-black text-white shadow-[0_8px_24px_rgba(249,115,22,0.20)]"
+          ? "flex min-h-9 items-center gap-2 rounded-[9px] px-3 py-1.5 text-sm font-black shadow-[0_8px_24px_rgba(15,23,42,0.18)]"
           : "flex min-h-9 items-center gap-2 rounded-[9px] px-3 py-1.5 text-sm font-black text-[#a0a0a0] transition hover:text-white"
       }
       onClick={onClick}
       role="tab"
+      style={
+        active
+          ? {
+              backgroundColor: accentColor,
+              color: accentTextColor,
+            }
+          : undefined
+      }
       type="button"
     >
       <span className="[&_svg]:size-4">{icon}</span>
@@ -751,6 +885,8 @@ function KitchenKanbanBoard({
     <div className="grid gap-4 xl:grid-cols-3">
       {KITCHEN_COLUMNS.map((column) => {
         const columnOrders = orders.filter((order) => order.status === column.status);
+        const columnAccent =
+          column.status === "preparing" ? actions.accentColor : column.accent;
 
         return (
           <section
@@ -761,7 +897,7 @@ function KitchenKanbanBoard({
               <div className="flex items-center gap-2">
                 <span
                   className="size-2.5 rounded-full"
-                  style={{ backgroundColor: column.accent }}
+                  style={{ backgroundColor: columnAccent }}
                 />
                 <h3 className="text-[13px] font-black uppercase tracking-[0.8px] text-[#a0a0a0]">
                   {column.title}
@@ -804,6 +940,8 @@ function KitchenTicket({
   variant?: KitchenTicketVariant;
 }) {
   const {
+    accentColor,
+    accentTextColor,
     canAdvance,
     canApproveMod,
     canPulse,
@@ -843,7 +981,14 @@ function KitchenTicket({
             </h1>
             <p className="mt-1 text-sm font-black text-white">{order.customerName}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-1 rounded-full border border-[#f97316]/25 bg-[#f97316]/10 px-2 py-1 text-xs font-black text-[#f97316]">
+          <div
+            className="flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-black"
+            style={{
+              backgroundColor: `${accentColor}1a`,
+              border: `1px solid ${accentColor}40`,
+              color: accentColor,
+            }}
+          >
             <Clock3 className="size-3.5" />
             {formatElapsedTime(order.createdAt, now)}
           </div>
@@ -875,6 +1020,8 @@ function KitchenTicket({
       <div className="divide-y divide-[#2e2e2e]">
         {order.items.map((item) => (
           <KitchenItemRow
+            accentColor={accentColor}
+            accentTextColor={accentTextColor}
             disabled={!canAdvance || isAdvancing || disabledByModification}
             item={item}
             key={item.id}
@@ -886,6 +1033,8 @@ function KitchenTicket({
       <div className="grid gap-2 border-t border-[#2e2e2e] p-3.5">
         {showBulkAction ? (
           <ActionButton
+            accentColor={accentColor}
+            accentTextColor={accentTextColor}
             disabled={
               !canAdvance || isAdvancing || disabledByModification || bulkAction.disabled
             }
@@ -927,6 +1076,20 @@ function KitchenTicket({
           </ActionButton>
         ) : null}
 
+        {order.status === "ready" && order.pickedUpAt ? (
+          <p className="text-center text-xs font-bold text-[#606060]">
+            Retiro confirmado por cliente. Se oculta en unos segundos.
+          </p>
+        ) : null}
+
+        {order.status === "delivered" ? (
+          <p className="text-center text-xs font-bold text-[#606060]">
+            {order.pickedUpAt
+              ? "Retiro confirmado. Sale de cocina en unos segundos."
+              : "Entregado. Esperando confirmación del cliente."}
+          </p>
+        ) : null}
+
         {pendingModification && disabledByModification ? (
           <p className="text-center text-xs font-bold text-[#eab308]">
             Resolvé la modificación para seguir avanzando.
@@ -938,10 +1101,14 @@ function KitchenTicket({
 }
 
 function KitchenItemRow({
+  accentColor,
+  accentTextColor,
   disabled,
   item,
   onAdvance,
 }: {
+  accentColor: string;
+  accentTextColor: string;
   disabled: boolean;
   item: StaffOrderItem;
   onAdvance: () => void;
@@ -951,7 +1118,13 @@ function KitchenItemRow({
   return (
     <div className="px-3 py-2">
       <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-start gap-2.5">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-[#242424] text-xs font-black text-[#f97316]">
+        <div
+          className="flex size-8 shrink-0 items-center justify-center rounded-[9px] text-xs font-black"
+          style={{
+            backgroundColor: `${accentColor}18`,
+            color: accentColor,
+          }}
+        >
           {item.quantity}x
         </div>
         <div className="min-w-0">
@@ -974,6 +1147,8 @@ function KitchenItemRow({
         <div className="flex shrink-0 self-center items-center gap-2">
           {canAdvanceItem ? (
             <ActionButton
+              accentColor={accentColor}
+              accentTextColor={accentTextColor}
               compact
               disabled={disabled}
               icon={item.status === "preparing" ? <CheckCircle2 /> : <Flame />}
@@ -1084,6 +1259,8 @@ function Badge({ label, tone }: { label: string; tone: "yellow" }) {
 }
 
 function ActionButton({
+  accentColor,
+  accentTextColor,
   children,
   compact,
   disabled,
@@ -1091,6 +1268,8 @@ function ActionButton({
   onClick,
   tone,
 }: {
+  accentColor?: string;
+  accentTextColor?: string;
   children: ReactNode;
   compact?: boolean;
   disabled?: boolean;
@@ -1099,7 +1278,7 @@ function ActionButton({
   tone: "orange" | "green" | "red" | "neutral";
 }) {
   const classes = {
-    orange: "bg-[#f97316] text-white shadow-[0_8px_24px_rgba(249,115,22,0.22)]",
+    orange: "shadow-[0_8px_24px_rgba(15,23,42,0.18)]",
     green: "bg-[#22c55e] text-white shadow-[0_8px_24px_rgba(34,197,94,0.18)]",
     red: "border border-[#ef4444]/25 bg-[#ef4444]/10 text-[#ef4444]",
     neutral: "border border-[#2e2e2e] bg-[#242424] text-[#f5f5f5]",
@@ -1117,6 +1296,14 @@ function ActionButton({
         event.stopPropagation();
         onClick();
       }}
+      style={
+        tone === "orange"
+          ? {
+              backgroundColor: accentColor ?? "#f97316",
+              color: accentTextColor ?? "#ffffff",
+            }
+          : undefined
+      }
       type="button"
     >
       {icon ? <span className="[&_svg]:size-4">{icon}</span> : null}
@@ -1128,12 +1315,20 @@ function ActionButton({
 function BrandMark({
   brandIcon,
   logoUrl,
+  primaryColor,
 }: {
   brandIcon: string;
   logoUrl: string | null;
+  primaryColor: string;
 }) {
   return (
-    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#f97316] text-sm font-black text-white">
+    <div
+      className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] text-sm font-black shadow-[0_4px_16px_rgba(0,0,0,0.18)]"
+      style={{
+        backgroundColor: normalizeHexColor(primaryColor),
+        color: getContrastColor(primaryColor),
+      }}
+    >
       {logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img alt="" className="size-full object-cover" src={logoUrl} />

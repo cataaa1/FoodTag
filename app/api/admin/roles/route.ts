@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
+
 import { NextResponse } from "next/server";
 
 import { handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
+import { writeAuditLog } from "@/lib/data/audit-log";
 import { getDb } from "@/lib/db/client";
 import { roleCreateSchema } from "@/lib/validators/menu";
 
@@ -40,8 +42,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await requireStaffPermission("roles.manage");
-
+    const context = await requireStaffPermission("roles.manage");
     const body = await parseJsonBody(request, roleCreateSchema);
     const id = randomUUID();
 
@@ -57,6 +58,17 @@ export async function POST(request: Request) {
         name: body.name,
         permissionsJson: JSON.stringify(body.permissions),
       });
+
+    writeAuditLog({
+      actorUserId: context.user.id,
+      action: "role.created",
+      targetType: "role",
+      targetId: id,
+      metadata: {
+        name: body.name,
+        permissions: body.permissions,
+      },
+    });
 
     return NextResponse.json({ ok: true, id }, { status: 201 });
   } catch (error) {

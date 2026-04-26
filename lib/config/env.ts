@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const clientEnvSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().min(1).optional(),
 });
 
 const serverEnvSchema = clientEnvSchema.extend({
@@ -13,6 +14,8 @@ const serverEnvSchema = clientEnvSchema.extend({
   SEED_ADMIN_EMAIL: z.string().email().optional(),
   SEED_ADMIN_PASSWORD: z.string().min(8).optional(),
   SEED_ADMIN_FULL_NAME: z.string().min(2).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+  VAPID_CONTACT_EMAIL: z.string().email().optional(),
 });
 
 type ClientEnv = z.infer<typeof clientEnvSchema>;
@@ -28,6 +31,7 @@ export function getClientEnv(): ClientEnv {
 
   cachedClientEnv = clientEnvSchema.parse({
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
   });
 
   return cachedClientEnv;
@@ -48,6 +52,8 @@ export function getServerEnv(): ServerEnv {
     SEED_ADMIN_EMAIL: process.env.SEED_ADMIN_EMAIL,
     SEED_ADMIN_PASSWORD: process.env.SEED_ADMIN_PASSWORD,
     SEED_ADMIN_FULL_NAME: process.env.SEED_ADMIN_FULL_NAME,
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || undefined,
+    VAPID_CONTACT_EMAIL: process.env.VAPID_CONTACT_EMAIL || undefined,
   });
 
   return cachedServerEnv;

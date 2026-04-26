@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
+import { writeAuditLog } from "@/lib/data/audit-log";
 import { getDb } from "@/lib/db/client";
 import { categoryCreateSchema } from "@/lib/validators/menu";
 
@@ -43,7 +44,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await requireStaffPermission("menu.write");
+    const context = await requireStaffPermission("menu.write");
 
     const body = await parseJsonBody(request, categoryCreateSchema);
     const db = getDb();
@@ -68,6 +69,18 @@ export async function POST(request: Request) {
     revalidatePath("/menu");
     revalidatePath("/admin");
     revalidatePath("/admin/menu");
+
+    writeAuditLog({
+      actorUserId: context.user.id,
+      action: "menu.category.created",
+      targetType: "category",
+      targetId: id,
+      metadata: {
+        name: body.name,
+        position: body.position,
+        visible: body.visible,
+      },
+    });
 
     return NextResponse.json({ category: category ? mapCategory(category) : null }, { status: 201 });
   } catch (error) {

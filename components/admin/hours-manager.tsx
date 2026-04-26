@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
+import { useTransientMessage } from "@/hooks/use-transient-message";
+import type { PermissionKey } from "@/lib/types/domain";
 import { fetchJson } from "@/lib/utils/http";
 
 type HoursEntry = {
@@ -20,6 +22,11 @@ type TruckStatus = {
   reason: string | null;
   truckName: string;
   todayHoursLabel: string;
+};
+
+type HoursResponse = {
+  hours: HoursEntry[];
+  permissions: PermissionKey[];
 };
 
 const WEEKDAY_LABELS = [
@@ -39,10 +46,14 @@ export function HoursManager() {
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [pauseReason, setPauseReason] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useTransientMessage(message, () => setMessage(null));
+  useTransientMessage(error, () => setError(null), 4_200);
 
   const hoursQuery = useQuery({
     queryKey: ["admin", "hours"],
-    queryFn: () => fetchJson<{ hours: HoursEntry[] }>("/api/admin/hours"),
+    queryFn: () => fetchJson<HoursResponse>("/api/admin/hours"),
   });
   const truckStatusQuery = useQuery({
     queryKey: ["truck-status"],
@@ -79,8 +90,17 @@ export function HoursManager() {
         body: JSON.stringify({ hours: hoursState }),
       }),
     onSuccess: async () => {
+      setError(null);
       setMessage("Horarios guardados");
       await refreshStatus();
+    },
+    onError: (mutationError) => {
+      setMessage(null);
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "No pudimos guardar los horarios",
+      );
     },
   });
 
@@ -92,18 +112,36 @@ export function HoursManager() {
         body: JSON.stringify({ reason: pauseReason }),
       }),
     onSuccess: async () => {
+      setError(null);
       setMessage("Truck pausado manualmente");
       setPauseReason("");
       setShowPauseModal(false);
       await refreshStatus();
+    },
+    onError: (mutationError) => {
+      setMessage(null);
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "No pudimos pausar el truck",
+      );
     },
   });
 
   const resumeMutation = useMutation({
     mutationFn: async () => fetchJson("/api/admin/truck/resume", { method: "POST" }),
     onSuccess: async () => {
+      setError(null);
       setMessage("Pausa manual removida");
       await refreshStatus();
+    },
+    onError: (mutationError) => {
+      setMessage(null);
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "No pudimos reanudar el truck",
+      );
     },
   });
 
@@ -119,34 +157,49 @@ export function HoursManager() {
   }
 
   const isPaused = truckStatusQuery.data?.paused ?? false;
+  const permissions = hoursQuery.data?.permissions ?? [];
+  const canPauseTruck = permissions.includes("settings.write");
 
   return (
     <AdminShell
       action={
-        isPaused ? (
-          <button
-            className="rounded-[10px] bg-[#22c55e] px-[18px] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_8px_rgba(34,197,94,0.25)]"
-            onClick={() => resumeMutation.mutate()}
-            type="button"
-          >
-            ▶ Reanudar truck
-          </button>
+        canPauseTruck ? (
+          isPaused ? (
+            <button
+              className="rounded-[10px] bg-[#22c55e] px-[18px] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_8px_rgba(34,197,94,0.25)]"
+              disabled={resumeMutation.isPending}
+              onClick={() => resumeMutation.mutate()}
+              type="button"
+            >
+              {resumeMutation.isPending ? "Reanudando..." : "▶ Reanudar truck"}
+            </button>
+          ) : (
+            <button
+              className="rounded-[10px] bg-[#ef4444] px-[18px] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_8px_rgba(239,68,68,0.25)]"
+              disabled={pauseMutation.isPending}
+              onClick={() => setShowPauseModal(true)}
+              type="button"
+            >
+              ⏸ Pausar truck ahora
+            </button>
+          )
         ) : (
-          <button
-            className="rounded-[10px] bg-[#ef4444] px-[18px] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_8px_rgba(239,68,68,0.25)]"
-            onClick={() => setShowPauseModal(true)}
-            type="button"
-          >
-            ⏸ Pausar truck ahora
-          </button>
+          <span className="rounded-[10px] border border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2.5 text-[12px] font-bold text-[#777] dark:border-[#2e2e2e] dark:bg-[#222] dark:text-[#aaa]">
+            Sin permiso para pausar o reanudar
+          </span>
         )
       }
       subtitle="Configurá cuándo está abierto el truck"
       title="Gestión de horarios"
     >
       {message ? (
-        <div className="mb-5 rounded-[10px] border border-[#f97316]/25 bg-[#fff0e6] px-4 py-3 text-[13px] font-bold text-[#f97316]">
+        <div className="brand-accent-notice mb-5 rounded-[10px] border px-4 py-3 text-[13px] font-bold">
           {message}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="mb-5 rounded-[10px] border border-[#ef4444]/25 bg-[#ef4444]/10 px-4 py-3 text-[13px] font-bold text-[#ef4444]">
+          {error}
         </div>
       ) : null}
 
@@ -233,14 +286,14 @@ export function HoursManager() {
       <div className="flex flex-wrap items-center gap-3">
         <button
           className="admin-primary-button px-6 py-3 text-sm"
+          disabled={saveHoursMutation.isPending}
           onClick={() => saveHoursMutation.mutate()}
           type="button"
         >
-          Guardar cambios
+          {saveHoursMutation.isPending ? "Guardando..." : "Guardar cambios"}
         </button>
         <span className="text-xs font-semibold text-[#999]">
-          Estado actual:{" "}
-          {truckStatusQuery.data?.isOpen ? "abierto" : "cerrado"} ·{" "}
+          Estado actual: {truckStatusQuery.data?.isOpen ? "abierto" : "cerrado"} ·{" "}
           {truckStatusQuery.data?.todayHoursLabel ?? "sin información"}
         </span>
       </div>
@@ -251,6 +304,7 @@ export function HoursManager() {
           onSubmit={() => pauseMutation.mutate()}
           reason={pauseReason}
           setReason={setPauseReason}
+          submitting={pauseMutation.isPending}
         />
       ) : null}
     </AdminShell>
@@ -262,11 +316,13 @@ function PauseModal({
   onSubmit,
   reason,
   setReason,
+  submitting,
 }: {
   onClose: () => void;
   onSubmit: () => void;
   reason: string;
   setReason: (reason: string) => void;
+  submitting: boolean;
 }) {
   return (
     <div
@@ -298,10 +354,11 @@ function PauseModal({
         <div className="flex gap-2.5">
           <button
             className="flex-[2] rounded-[10px] bg-[#ef4444] p-[13px] text-sm font-bold text-white"
+            disabled={submitting}
             onClick={onSubmit}
             type="button"
           >
-            Pausar ahora
+            {submitting ? "Pausando..." : "Pausar ahora"}
           </button>
           <button className="admin-muted-button flex-1" onClick={onClose} type="button">
             Cancelar

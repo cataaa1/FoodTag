@@ -9,6 +9,7 @@ export const PERMISSIONS = [
   "orders.approve_mod",
   "hours.write",
   "users.manage",
+  "users.write",
   "roles.manage",
   "dashboard.view",
   "settings.write",

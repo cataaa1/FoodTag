@@ -11,6 +11,7 @@ type TruckConfigRow = {
   timezone: string;
   tip_defaults_json: string;
   beep_sound_id: string;
+  customer_pickup_cooldown_seconds: number;
   paused_manual_at: string | null;
   paused_reason: string | null;
 };
@@ -117,10 +118,13 @@ export function buildTruckStatus(
     address: config.address,
     heroImageUrl: config.heroImageUrl,
     publicTagline: config.publicTagline,
+    instagramHandle: config.instagramHandle,
     brandIcon: config.brandIcon,
     logoUrl: config.logoUrl,
     primaryColor: config.primaryColor,
     allowOrderModifications: config.allowOrderModifications,
+    beepSoundId: config.beepSoundId,
+    customerPickupCooldownSeconds: config.customerPickupCooldownSeconds,
     todayHoursLabel:
       todaysHours && !todaysHours.closed
         ? formatTimeWindow(todaysHours.opensAt, todaysHours.closesAt)
@@ -164,6 +168,7 @@ export async function getTruckConfig() {
     mpAccessTokenEncrypted: null,
     tipDefaultsJson: JSON.parse(row.tip_defaults_json) as number[],
     beepSoundId: row.beep_sound_id,
+    customerPickupCooldownSeconds: row.customer_pickup_cooldown_seconds,
     pausedManualAt: row.paused_manual_at,
     pausedReason: row.paused_reason,
   } satisfies TruckConfig;

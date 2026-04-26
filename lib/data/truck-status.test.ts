@@ -18,6 +18,7 @@ const baseConfig: TruckConfig = {
   mpAccessTokenEncrypted: null,
   tipDefaultsJson: [0, 5, 10, 15],
   beepSoundId: "classic",
+  customerPickupCooldownSeconds: 15,
   pausedManualAt: null,
   pausedReason: null,
 };
@@ -38,6 +39,7 @@ describe("buildTruckStatus", () => {
 
     expect(status.truckName).toBe("FoodTag Truck");
     expect(status.primaryColor).toBe("#F97316");
+    expect(status.customerPickupCooldownSeconds).toBe(15);
     expect(typeof status.isOpen).toBe("boolean");
     expect(status.todayHoursLabel).toContain("a");
   });

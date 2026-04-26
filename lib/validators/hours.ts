@@ -35,5 +35,14 @@ export const hoursPatchSchema = z.object({
 });
 
 export const pauseTruckSchema = z.object({
-  reason: z.string().trim().min(2).max(120),
+  reason: z
+    .string()
+    .trim()
+    .max(120)
+    .nullable()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim();
+      return trimmed ? trimmed : null;
+    }),
 });

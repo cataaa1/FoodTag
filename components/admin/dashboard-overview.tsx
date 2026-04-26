@@ -5,118 +5,220 @@ import { RefreshCw } from "lucide-react";
 import Link from "next/link";
 
 import { AdminShell } from "@/components/admin/admin-shell";
+import type {
+  DashboardAverageTicketBucket,
+  DashboardHourBucket,
+  DashboardPreparationBucket,
+  DashboardRevenueBucket,
+  DashboardToday,
+} from "@/lib/data/dashboard";
+import { getContrastColor, hexToRgba, normalizeHexColor } from "@/lib/utils/color";
+import { formatCurrency } from "@/lib/utils/format";
 import { fetchJson } from "@/lib/utils/http";
 
-type CategoryResponse = {
-  categories: Array<{ id: string; visible: boolean }>;
-};
+function formatDuration(valueSeconds: number | null) {
+  if (valueSeconds === null) {
+    return "Sin datos";
+  }
 
-type ItemsResponse = {
-  items: Array<{ id: string; name: string; available: boolean }>;
-};
+  const minutes = Math.floor(valueSeconds / 60);
+  const seconds = valueSeconds % 60;
 
-type HoursResponse = {
-  hours: Array<{ weekday: number; closed: boolean }>;
-};
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
 
-type TruckStatus = {
-  isOpen: boolean;
-  todayHoursLabel: string;
-  truckName: string;
-  paused: boolean;
-  reason: string | null;
-};
-
-const HOURLY = [12, 8, 15, 22, 30, 28, 19, 14, 9, 5, 2] as const;
-const HOURS = ["12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22"];
-
-function BarChart() {
-  const max = Math.max(...HOURLY);
+function CountChart({ color, series }: { color: string; series: DashboardHourBucket[] }) {
+  const max = Math.max(...series.map((entry) => entry.count), 1);
 
   return (
-    <div className="flex h-[120px] items-end gap-1.5 px-1">
-      {HOURLY.map((value, index) => (
-        <div
-          className="flex flex-1 flex-col items-center gap-1"
-          key={`${HOURS[index]}-${value}`}
-        >
+    <div className="flex h-[156px] items-end gap-2 px-1">
+      {series.map((entry) => (
+        <div className="flex flex-1 flex-col items-center gap-1.5" key={entry.label}>
+          <div className="text-[10px] font-black text-[#777] dark:text-[#b4b4b4]">
+            {entry.count}
+          </div>
           <div
-            className="w-full rounded-t bg-[#f97316] transition-[height]"
+            className="w-full rounded-t-[10px] transition-[height]"
             style={{
-              height: `${(value / max) * 100}%`,
-              minHeight: 4,
-              opacity: 0.2 + 0.8 * (value / max),
+              backgroundColor: color,
+              height: `${(entry.count / max) * 100}%`,
+              minHeight: 6,
+              opacity: entry.count ? 0.35 + 0.65 * (entry.count / max) : 0.12,
             }}
           />
-          <span className="text-[10px] font-medium text-[#999]">{HOURS[index]}</span>
+          <span className="text-[10px] font-medium text-[#999]">{entry.label}</span>
         </div>
       ))}
     </div>
   );
 }
 
+function RevenueChart({ color, series }: { color: string; series: DashboardRevenueBucket[] }) {
+  const max = Math.max(...series.map((entry) => entry.revenueCents), 1);
+
+  return (
+    <div className="flex h-[156px] items-end gap-2 px-1">
+      {series.map((entry) => (
+        <div className="flex flex-1 flex-col items-center gap-1.5" key={entry.serviceDate}>
+          <div className="text-[10px] font-black text-[#777] dark:text-[#b4b4b4]">
+            {entry.revenueCents ? formatCurrency(entry.revenueCents) : "-"}
+          </div>
+          <div
+            className="w-full rounded-t-[10px] transition-[height]"
+            style={{
+              background: `linear-gradient(180deg, ${hexToRgba(color, 0.95)} 0%, ${hexToRgba(
+                color,
+                0.55,
+              )} 100%)`,
+              height: `${(entry.revenueCents / max) * 100}%`,
+              minHeight: 6,
+            }}
+          />
+          <span className="text-[10px] font-medium text-[#999]">{entry.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AverageTicketChart({
+  color,
+  series,
+}: {
+  color: string;
+  series: DashboardAverageTicketBucket[];
+}) {
+  const max = Math.max(...series.map((entry) => entry.averageTicketCents ?? 0), 1);
+
+  return (
+    <div className="flex h-[156px] items-end gap-2 px-1">
+      {series.map((entry) => {
+        const value = entry.averageTicketCents ?? 0;
+
+        return (
+          <div className="flex flex-1 flex-col items-center gap-1.5" key={entry.serviceDate}>
+            <div className="text-[10px] font-black text-[#777] dark:text-[#b4b4b4]">
+              {entry.averageTicketCents === null ? "-" : formatCurrency(entry.averageTicketCents)}
+            </div>
+            <div
+              className="w-full rounded-t-[10px] transition-[height]"
+              style={{
+                background: `linear-gradient(180deg, ${hexToRgba(color, 0.9)} 0%, ${hexToRgba(
+                  color,
+                  0.45,
+                )} 100%)`,
+                height: `${(value / max) * 100}%`,
+                minHeight: 6,
+              }}
+            />
+            <span className="text-[10px] font-medium text-[#999]">{entry.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PreparationChart({
+  color,
+  series,
+}: {
+  color: string;
+  series: DashboardPreparationBucket[];
+}) {
+  const max = Math.max(...series.map((entry) => entry.averagePreparationSeconds ?? 0), 1);
+
+  return (
+    <div className="flex h-[156px] items-end gap-2 px-1">
+      {series.map((entry) => {
+        const value = entry.averagePreparationSeconds ?? 0;
+
+        return (
+          <div className="flex flex-1 flex-col items-center gap-1.5" key={entry.serviceDate}>
+            <div className="text-[10px] font-black text-[#777] dark:text-[#b4b4b4]">
+              {formatDuration(entry.averagePreparationSeconds)}
+            </div>
+            <div
+              className="w-full rounded-t-[10px] transition-[height]"
+              style={{
+                background: `linear-gradient(180deg, ${hexToRgba(color, 0.9)} 0%, ${hexToRgba(
+                  color,
+                  0.4,
+                )} 100%)`,
+                height: `${(value / max) * 100}%`,
+                minHeight: 6,
+              }}
+            />
+            <span className="text-[10px] font-medium text-[#999]">{entry.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function DashboardOverview() {
-  const categoriesQuery = useQuery({
-    queryKey: ["admin", "categories"],
-    queryFn: () => fetchJson<CategoryResponse>("/api/admin/categories"),
-  });
-  const itemsQuery = useQuery({
-    queryKey: ["admin", "menu-items"],
-    queryFn: () => fetchJson<ItemsResponse>("/api/admin/menu-items"),
-  });
-  const hoursQuery = useQuery({
-    queryKey: ["admin", "hours"],
-    queryFn: () => fetchJson<HoursResponse>("/api/admin/hours"),
-  });
-  const truckStatusQuery = useQuery({
-    queryKey: ["truck-status"],
-    queryFn: () => fetchJson<TruckStatus>("/api/customer/truck-status"),
+  const dashboardQuery = useQuery({
+    queryKey: ["admin", "dashboard", "today"],
+    queryFn: () => fetchJson<{ dashboard: DashboardToday }>("/api/admin/dashboard/today"),
   });
 
-  const visibleCategories =
-    categoriesQuery.data?.categories.filter((category) => category.visible).length ?? 0;
-  const activeItems =
-    itemsQuery.data?.items.filter((item) => item.available).length ?? 0;
-  const openDays =
-    hoursQuery.data?.hours.filter((entry) => !entry.closed).length ?? 0;
-  const truckStatus = truckStatusQuery.data;
-  const bestSeller = itemsQuery.data?.items.find((item) => item.available)?.name ?? "Classic Smash";
-
+  const dashboard = dashboardQuery.data?.dashboard;
+  const truckStatus = dashboard?.truckStatus;
+  const accentColor = normalizeHexColor(truckStatus?.primaryColor);
+  const accentTextColor = getContrastColor(accentColor);
   const metrics = [
     {
       label: "Vendido hoy",
-      value: "$0",
-      sub: "Checkout real en Fase 4",
-      color: "#f97316",
+      value: dashboard ? formatCurrency(dashboard.soldTodayCents) : "-",
+      sub: dashboard ? `${dashboard.approvedOrders} pagos confirmados` : "Cargando ventas",
+      color: accentColor,
       icon: "💰",
     },
     {
-      label: "Pedidos totales",
-      value: "0",
-      sub: "Ticket mock en Fase 2",
+      label: "Pedidos del dia",
+      value: dashboard ? String(dashboard.totalOrders) : "-",
+      sub: dashboard
+        ? `${dashboard.activeOrders} activos · ${dashboard.cancelledOrders} cancelados`
+        : "Cargando pedidos",
       color: "#22c55e",
       icon: "🧾",
     },
     {
-      label: "Ítem más vendido",
-      value: bestSeller,
-      sub: `${activeItems} items activos`,
+      label: "Ticket promedio",
+      value: dashboard
+        ? dashboard.averageTicketCents === null
+          ? "Sin datos"
+          : formatCurrency(dashboard.averageTicketCents)
+        : "-",
+      sub: dashboard
+        ? dashboard.averagePreparationSeconds === null
+          ? "Todavia no hay pedidos listos hoy"
+          : `${formatDuration(dashboard.averagePreparationSeconds)} promedio hasta listo`
+        : "Cargando tiempos",
+      color: "#3b82f6",
+      icon: "📈",
+    },
+    {
+      label: "Item mas vendido",
+      value: dashboard?.bestSellerName ?? "Sin ventas",
+      sub:
+        dashboard && dashboard.bestSellerQuantity > 0
+          ? `${dashboard.bestSellerQuantity} unidades hoy`
+          : "Todavia no hay pedidos aprobados",
       color: "#eab308",
       icon: "🏆",
     },
     {
-      label: "Categorías visibles",
-      value: String(visibleCategories),
-      sub: `${openDays} días con servicio`,
-      color: "#3b82f6",
-      icon: "📊",
-    },
-    {
       label: "Estado del truck",
-      value: truckStatus?.isOpen ? "Abierto" : "Cerrado",
-      sub: truckStatus?.paused ? "Pausa manual activa" : truckStatus?.todayHoursLabel ?? "Sin horario",
-      color: truckStatus?.isOpen ? "#22c55e" : "#ef4444",
-      icon: truckStatus?.isOpen ? "⏱" : "⏸",
+      value: truckStatus?.paused ? "En pausa" : truckStatus?.isOpen ? "Abierto" : "Cerrado",
+      sub: truckStatus?.paused
+        ? truckStatus.reason ?? "Pausa manual activa"
+        : truckStatus?.isOpen
+          ? truckStatus.todayHoursLabel
+          : truckStatus?.nextOpeningLabel ?? "Sin proximo horario",
+      color: truckStatus?.paused ? "#ef4444" : truckStatus?.isOpen ? "#22c55e" : "#eab308",
+      icon: truckStatus?.paused ? "⏸" : truckStatus?.isOpen ? "⏱" : "🌙",
     },
   ];
 
@@ -124,21 +226,27 @@ export function DashboardOverview() {
     <AdminShell
       action={
         <button
-          className="inline-flex items-center gap-2 rounded-[10px] bg-[#f97316] px-4 py-2.5 text-[13px] font-bold text-white shadow-[0_2px_8px_rgba(249,115,22,0.25)] transition hover:bg-[#ea580c]"
-          onClick={() => {
-            void categoriesQuery.refetch();
-            void itemsQuery.refetch();
-            void hoursQuery.refetch();
-            void truckStatusQuery.refetch();
+          className="inline-flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-[13px] font-bold shadow-[0_2px_8px_rgba(0,0,0,0.14)] transition"
+          onClick={() => void dashboardQuery.refetch()}
+          style={{
+            backgroundColor: accentColor,
+            boxShadow: `0 2px 8px ${hexToRgba(accentColor, 0.28)}`,
+            color: accentTextColor,
           }}
           type="button"
         >
-          <RefreshCw className="size-3.5" />
+          <RefreshCw
+            className={dashboardQuery.isFetching ? "size-3.5 animate-spin" : "size-3.5"}
+          />
           Actualizar
         </button>
       }
-      subtitle="Turno activo desde las 12:00"
-      title="Dashboard del día"
+      subtitle={
+        dashboard
+          ? `Resumen operativo actualizado para ${dashboard.serviceDateLabel}`
+          : "Resumen operativo del dia"
+      }
+      title="Dashboard del dia"
     >
       <div className="grid gap-3.5 pb-6 md:grid-cols-2 xl:grid-cols-5">
         {metrics.map((metric) => (
@@ -161,35 +269,102 @@ export function DashboardOverview() {
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+      <section className="mb-4 rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
+        <div className="mb-4 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
+          Accesos rapidos
+        </div>
+        <div className="grid gap-2 md:grid-cols-3">
+          <QuickAction color="#3b82f6" href="/staff/kanban" icon="📋" label="Ir al Kanban" />
+          <QuickAction color="#ef4444" href="/admin/hours" icon="⏸" label="Horarios y pausa" />
+          <QuickAction color={accentColor} href="/admin/menu" icon="🍔" label="Gestionar menu" />
+        </div>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-2">
         <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
           <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
-            Ventas por hora
+            Ganancia por dia
           </div>
-          <div className="mb-4 text-xs text-[#999]">Hoy - pedidos completados</div>
-          <BarChart />
+          <div className="mb-4 text-xs text-[#999]">Ultimos 7 dias hasta hoy</div>
+          <RevenueChart
+            color={accentColor}
+            series={
+              dashboard?.weeklyRevenue.length
+                ? dashboard.weeklyRevenue
+                : Array.from({ length: 7 }, (_, index) => ({
+                    serviceDate: `empty-revenue-${index}`,
+                    label: `D${index + 1}`,
+                    revenueCents: 0,
+                  }))
+            }
+          />
         </section>
 
         <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
-          <div className="mb-4 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
-            Accesos rápidos
+          <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
+            Pedidos por hora
           </div>
-          <div className="space-y-2">
-            <QuickAction color="#3b82f6" href="/staff/kanban" icon="📋" label="Ir al Kanban" />
-            <QuickAction color="#ef4444" href="/admin/hours" icon="⏸" label="Pausar truck" />
-            <QuickAction color="#f97316" href="/admin/menu" icon="🍔" label="Gestionar menú" />
+          <div className="mb-4 text-xs text-[#999]">Distribucion del dia actual</div>
+          <CountChart
+            color={accentColor}
+            series={
+              dashboard?.hourlyOrders.length
+                ? dashboard.hourlyOrders
+                : Array.from({ length: 11 }, (_, index) => ({
+                    label: String(12 + index).padStart(2, "0"),
+                    count: 0,
+                  }))
+            }
+          />
+        </section>
+
+        <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
+          <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
+            Ticket promedio por dia
           </div>
+          <div className="mb-4 text-xs text-[#999]">Promedio de valor por ticket en la semana</div>
+          <AverageTicketChart
+            color="#3b82f6"
+            series={
+              dashboard?.weeklyAverageTicket.length
+                ? dashboard.weeklyAverageTicket
+                : Array.from({ length: 7 }, (_, index) => ({
+                    serviceDate: `empty-ticket-${index}`,
+                    label: `D${index + 1}`,
+                    averageTicketCents: null,
+                  }))
+            }
+          />
+        </section>
+
+        <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
+          <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
+            Tiempo promedio por dia
+          </div>
+          <div className="mb-4 text-xs text-[#999]">Promedio real hasta que cada ticket queda listo</div>
+          <PreparationChart
+            color="#14b8a6"
+            series={
+              dashboard?.weeklyAveragePreparation.length
+                ? dashboard.weeklyAveragePreparation
+                : Array.from({ length: 7 }, (_, index) => ({
+                    serviceDate: `empty-preparation-${index}`,
+                    label: `D${index + 1}`,
+                    averagePreparationSeconds: null,
+                  }))
+            }
+          />
         </section>
       </div>
 
-      {categoriesQuery.isError || itemsQuery.isError || hoursQuery.isError ? (
+      {dashboardQuery.isError ? (
         <div className="mt-5">
           <div className="rounded-xl border border-[#ef4444]/25 bg-[#ef4444]/10 p-5">
             <div className="text-sm font-bold text-[#ef4444]">
-              No pudimos leer la configuración
+              No pudimos cargar el dashboard
             </div>
             <div className="mt-1 text-xs text-[#999]">
-              Revisá la base local SQLite, las migraciones y el seed inicial.
+              Revisa permisos, base local SQLite y el estado de los pedidos del dia.
             </div>
           </div>
         </div>

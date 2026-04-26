@@ -1,10 +1,12 @@
+import { randomUUID } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
 
 import { ApiError, handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody, parseParams } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
+import { writeAuditLog } from "@/lib/data/audit-log";
 import { getDb } from "@/lib/db/client";
 import { idParamSchema, menuItemUpdateSchema } from "@/lib/validators/menu";
 
@@ -52,6 +54,11 @@ type VariantInput = {
   priceCents: number;
   available: boolean;
   position: number;
+};
+
+type CategoryLookupRow = {
+  id: string;
+  name: string;
 };
 
 function mapVariant(row: MenuVariantRow) {
@@ -138,13 +145,24 @@ function replaceModifiers(menuItemId: string, modifiers: ModifierInput[]) {
   });
 }
 
+function getCategoryLookup(categoryId: string) {
+  return getDb()
+    .prepare<{ id: string }, CategoryLookupRow>("select id, name from category where id = @id")
+    .get({ id: categoryId });
+}
+
+function revalidateAdminMenuPaths() {
+  revalidatePath("/menu");
+  revalidatePath("/admin");
+  revalidatePath("/admin/menu");
+}
+
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireStaffPermission("menu.write");
-
+    const staffContext = await requireStaffPermission("menu.write");
     const params = parseParams(await context.params, idParamSchema);
     const body = await parseJsonBody(request, menuItemUpdateSchema);
     const db = getDb();
@@ -153,7 +171,11 @@ export async function PATCH(
       .get({ id: params.id });
 
     if (!current) {
-      throw new ApiError(404, "NOT_FOUND", "Ítem no encontrado");
+      throw new ApiError(404, "NOT_FOUND", "Item no encontrado");
+    }
+
+    if (body.categoryId && !getCategoryLookup(body.categoryId)) {
+      throw new ApiError(400, "INVALID_INPUT", "La categoría elegida ya no existe");
     }
 
     const transaction = db.transaction(() => {
@@ -175,9 +197,9 @@ export async function PATCH(
         id: params.id,
         categoryId: body.categoryId ?? current.category_id,
         name: body.name ?? current.name,
-        description: body.description ?? current.description,
+        description: body.description === undefined ? current.description : body.description,
         priceCents: body.priceCents ?? current.price_cents,
-        photoUrl: body.photoUrl ?? current.photo_url,
+        photoUrl: body.photoUrl === undefined ? current.photo_url : body.photoUrl,
         available:
           body.available === undefined
             ? current.available
@@ -209,11 +231,6 @@ export async function PATCH(
     const item = db
       .prepare<{ id: string }, MenuItemRow>("select * from menu_item where id = @id")
       .get({ id: params.id });
-
-    revalidatePath("/menu");
-    revalidatePath("/admin");
-    revalidatePath("/admin/menu");
-
     const modifiers = db
       .prepare<{ id: string }, MenuModifierRow>(
         "select * from menu_item_modifier where menu_item_id = @id order by position asc",
@@ -226,6 +243,33 @@ export async function PATCH(
       )
       .all({ id: params.id })
       .map(mapVariant);
+
+    revalidateAdminMenuPaths();
+
+    writeAuditLog({
+      actorUserId: staffContext.user.id,
+      action:
+        body.available !== undefined &&
+        body.name === undefined &&
+        body.description === undefined &&
+        body.priceCents === undefined &&
+        body.photoUrl === undefined &&
+        body.hasVariants === undefined &&
+        body.position === undefined &&
+        body.categoryId === undefined &&
+        body.modifiers === undefined &&
+        body.variants === undefined
+          ? "menu.item.availability.updated"
+          : "menu.item.updated",
+      targetType: "menu_item",
+      targetId: params.id,
+      metadata: {
+        available: item?.available ?? Boolean(current.available),
+        hasImage: Boolean(item?.photo_url ?? current.photo_url),
+        hasVariants: item?.has_variants ?? Boolean(current.has_variants),
+        name: item?.name ?? current.name,
+      },
+    });
 
     return NextResponse.json({
       item: item ? { ...mapItem(item), variants, modifiers } : null,
@@ -240,14 +284,33 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireStaffPermission("menu.write");
-
+    const staffContext = await requireStaffPermission("menu.write");
     const params = parseParams(await context.params, idParamSchema);
-    getDb().prepare("delete from menu_item where id = ?").run(params.id);
+    const db = getDb();
+    const current = db
+      .prepare<{ id: string }, MenuItemRow>("select * from menu_item where id = @id")
+      .get({ id: params.id });
 
-    revalidatePath("/menu");
-    revalidatePath("/admin");
-    revalidatePath("/admin/menu");
+    if (!current) {
+      throw new ApiError(404, "NOT_FOUND", "Item no encontrado");
+    }
+
+    db.prepare("delete from menu_item where id = ?").run(params.id);
+
+    revalidateAdminMenuPaths();
+
+    writeAuditLog({
+      actorUserId: staffContext.user.id,
+      action: "menu.item.deleted",
+      targetType: "menu_item",
+      targetId: params.id,
+      metadata: {
+        available: Boolean(current.available),
+        hasImage: Boolean(current.photo_url),
+        hasVariants: Boolean(current.has_variants),
+        name: current.name,
+      },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

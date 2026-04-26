@@ -6,5 +6,6 @@ export default async function TicketPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <TicketScreen orderId={id} />;
+  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null;
+  return <TicketScreen orderId={id} vapidPublicKey={vapidPublicKey} />;
 }

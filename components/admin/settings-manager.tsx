@@ -1,9 +1,21 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
+import { useTransientMessage } from "@/hooks/use-transient-message";
+import {
+  readStoredAdminLanguage,
+  readStoredDarkMode,
+  writeStoredAdminLanguage,
+  writeStoredDarkMode,
+  type AdminLanguage,
+} from "@/lib/utils/admin-preferences";
+import { playBeeperSound } from "@/lib/utils/beeper";
+import { optimizeImageFile } from "@/lib/utils/client-image";
+import { getContrastColor, normalizeHexColor } from "@/lib/utils/color";
 import { fetchJson } from "@/lib/utils/http";
 
 type TruckSettings = {
@@ -19,6 +31,16 @@ type TruckSettings = {
   timezone: string;
   beepSoundId: string;
   allowOrderModifications: boolean;
+  customerPickupCooldownSeconds: number;
+};
+
+type AdminSession = {
+  staffUser: {
+    id: string;
+    email: string;
+    fullName: string;
+  };
+  permissions: string[];
 };
 
 type SettingsForm = {
@@ -31,7 +53,9 @@ type SettingsForm = {
   instagramHandle: string;
   primaryColor: string;
   timezone: string;
+  beepSoundId: string;
   allowOrderModifications: boolean;
+  customerPickupCooldownSeconds: number;
 };
 
 const EMPTY_FORM: SettingsForm = {
@@ -44,7 +68,9 @@ const EMPTY_FORM: SettingsForm = {
   instagramHandle: "",
   primaryColor: "#F97316",
   timezone: "America/Argentina/Buenos_Aires",
+  beepSoundId: "classic",
   allowOrderModifications: true,
+  customerPickupCooldownSeconds: 15,
 };
 
 const TIMEZONES = [
@@ -54,6 +80,13 @@ const TIMEZONES = [
 ] as const;
 
 const BRAND_ICON_OPTIONS = ["🚚", "🍔", "🍟", "🌮", "🍕", "🥪", "🥤", "🔥"] as const;
+const BEEP_SOUND_OPTIONS = [
+  { id: "classic", label: "Classic", description: "Más firme y clásico" },
+  { id: "soft", label: "Soft", description: "Más suave y corto" },
+  { id: "marcado", label: "Marcado", description: "Más insistente y brillante" },
+] as const;
+const MAX_IMAGE_UPLOAD_BYTES = 1_600_000;
+const MAX_IMAGE_DIMENSION = 1600;
 
 function settingsToForm(settings: TruckSettings): SettingsForm {
   return {
@@ -66,21 +99,34 @@ function settingsToForm(settings: TruckSettings): SettingsForm {
     instagramHandle: settings.instagramHandle ?? "",
     primaryColor: settings.primaryColor,
     timezone: settings.timezone,
+    beepSoundId: settings.beepSoundId,
     allowOrderModifications: settings.allowOrderModifications,
+    customerPickupCooldownSeconds: settings.customerPickupCooldownSeconds,
   };
 }
 
 export function SettingsManager() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState<SettingsForm>(EMPTY_FORM);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [darkModePreference, setDarkModePreference] = useState(readStoredDarkMode);
+  const [languagePreference, setLanguagePreference] =
+    useState<AdminLanguage>(readStoredAdminLanguage);
+
+  useTransientMessage(feedback, () => setFeedback(null));
+  useTransientMessage(error, () => setError(null), 4_200);
 
   const settingsQuery = useQuery({
     queryKey: ["admin", "settings"],
     queryFn: () => fetchJson<{ settings: TruckSettings }>("/api/admin/settings"),
+  });
+  const sessionQuery = useQuery({
+    queryKey: ["admin", "session"],
+    queryFn: () => fetchJson<AdminSession>("/api/admin/session"),
   });
 
   useEffect(() => {
@@ -88,6 +134,17 @@ export function SettingsManager() {
       setForm(settingsToForm(settingsQuery.data.settings));
     }
   }, [settingsQuery.data?.settings]);
+
+  const logoutMutation = useMutation({
+    mutationFn: async () =>
+      fetch("/api/staff/logout", { method: "POST" }),
+    onSuccess: () => {
+      router.push("/staff/login");
+    },
+    onError: () => {
+      setError("No pudimos cerrar la sesion");
+    },
+  });
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -106,6 +163,8 @@ export function SettingsManager() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin", "settings"] }),
         queryClient.invalidateQueries({ queryKey: ["truck-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["public-menu"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "dashboard", "today"] }),
       ]);
     },
     onError: (mutationError) => {
@@ -123,6 +182,16 @@ export function SettingsManager() {
     value: SettingsForm[TField],
   ) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateDarkModePreference(value: boolean) {
+    setDarkModePreference(value);
+    writeStoredDarkMode(value);
+  }
+
+  function updateLanguagePreference(value: AdminLanguage) {
+    setLanguagePreference(value);
+    writeStoredAdminLanguage(value);
   }
 
   function importHeroImage(file: File | undefined) {
@@ -150,7 +219,7 @@ export function SettingsManager() {
     if (!file) return;
 
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setError("UsÃ¡ una imagen JPG, PNG o WEBP");
+      setError("Usá una imagen JPG, PNG o WEBP");
       return;
     }
 
@@ -167,6 +236,42 @@ export function SettingsManager() {
     reader.readAsDataURL(file);
   }
 
+  void importHeroImage;
+  void importLogoImage;
+
+  async function importImage(
+    field: "heroImageUrl" | "logoUrl",
+    file: File | undefined,
+  ) {
+    if (!file) return;
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setFeedback(null);
+      setError("Usá una imagen JPG, PNG o WEBP");
+      return;
+    }
+
+    try {
+      const optimized = await optimizeImageFile(file, {
+        maxBytes: MAX_IMAGE_UPLOAD_BYTES,
+        maxDimension: MAX_IMAGE_DIMENSION,
+      });
+
+      setError(null);
+      setFeedback(
+        `Imagen optimizada a ${optimized.width}x${optimized.height} para que no pese más de 1.6MB`,
+      );
+      updateForm(field, optimized.dataUrl);
+    } catch (imageError) {
+      setFeedback(null);
+      setError(
+        imageError instanceof Error
+          ? imageError.message
+          : "No pudimos preparar la imagen",
+      );
+    }
+  }
+
   return (
     <AdminShell
       action={
@@ -179,7 +284,7 @@ export function SettingsManager() {
           {saveMutation.isPending ? "Guardando..." : "Guardar cambios"}
         </button>
       }
-      subtitle="Datos públicos, imagen del landing y ajustes generales"
+      subtitle="Datos públicos, branding y ajustes operativos"
       title="Configuración"
     >
       {feedback ? (
@@ -226,9 +331,7 @@ export function SettingsManager() {
               <Field label="Instagram">
                 <input
                   className="admin-input"
-                  onChange={(event) =>
-                    updateForm("instagramHandle", event.target.value)
-                  }
+                  onChange={(event) => updateForm("instagramHandle", event.target.value)}
                   placeholder="@foodtag"
                   value={form.instagramHandle}
                 />
@@ -236,29 +339,45 @@ export function SettingsManager() {
             </div>
             <div className="mt-4 rounded-[16px] border border-[#f0ddd0] bg-[#fff8f1] p-4 dark:border-[#2e2e2e] dark:bg-[#242424]">
               <div className="flex flex-wrap items-center gap-4">
-                <BrandMark brandIcon={form.brandIcon} logoUrl={form.logoUrl} />
+                <BrandMark
+                  brandIcon={form.brandIcon}
+                  logoUrl={form.logoUrl}
+                  primaryColor={form.primaryColor}
+                />
                 <div className="min-w-[220px] flex-1">
                   <p className="mb-2 text-xs font-bold text-[#555] dark:text-[#a0a0a0]">
                     Icono o logo de marca
                   </p>
                   <div className="mb-3 flex flex-wrap gap-2">
-                    {BRAND_ICON_OPTIONS.map((icon) => (
-                      <button
-                        className={
-                          form.brandIcon === icon && !form.logoUrl
-                            ? "flex size-9 items-center justify-center rounded-[10px] border-2 border-[#f97316] bg-[#fff1e6] text-lg"
-                            : "flex size-9 items-center justify-center rounded-[10px] border border-[#e8d4c4] bg-white text-lg dark:border-[#3a3a3a] dark:bg-[#1a1a1a]"
-                        }
-                        key={icon}
-                        onClick={() => {
-                          updateForm("brandIcon", icon);
-                          updateForm("logoUrl", null);
-                        }}
-                        type="button"
-                      >
-                        {icon}
-                      </button>
-                    ))}
+                    {BRAND_ICON_OPTIONS.map((icon) => {
+                      const selected = form.brandIcon === icon && !form.logoUrl;
+
+                      return (
+                        <button
+                          className={
+                            selected
+                              ? "flex size-9 items-center justify-center rounded-[10px] border-2 text-lg"
+                              : "flex size-9 items-center justify-center rounded-[10px] border border-[#e8d4c4] bg-white text-lg dark:border-[#3a3a3a] dark:bg-[#1a1a1a]"
+                          }
+                          key={icon}
+                          onClick={() => {
+                            updateForm("brandIcon", icon);
+                            updateForm("logoUrl", null);
+                          }}
+                          style={
+                            selected
+                              ? {
+                                  borderColor: form.primaryColor,
+                                  backgroundColor: `${normalizeHexColor(form.primaryColor)}22`,
+                                }
+                              : undefined
+                          }
+                          type="button"
+                        >
+                          {icon}
+                        </button>
+                      );
+                    })}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -281,7 +400,7 @@ export function SettingsManager() {
                   <input
                     accept="image/jpeg,image/png,image/webp"
                     className="hidden"
-                    onChange={(event) => importLogoImage(event.target.files?.[0])}
+                    onChange={(event) => void importImage("logoUrl", event.target.files?.[0])}
                     ref={logoInputRef}
                     type="file"
                   />
@@ -301,8 +420,17 @@ export function SettingsManager() {
                     src={form.heroImageUrl}
                   />
                 ) : (
-                  <div className="flex size-full flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,#c2410c_0%,#f97316_45%,#fed7aa_100%)]">
-                    <BrandMark brandIcon={form.brandIcon} logoUrl={form.logoUrl} />
+                  <div
+                    className="flex size-full flex-col items-center justify-center gap-2"
+                    style={{
+                      background: `linear-gradient(135deg, ${normalizeHexColor(form.primaryColor)} 0%, ${normalizeHexColor(form.primaryColor)} 45%, ${normalizeHexColor(form.primaryColor)}33 100%)`,
+                    }}
+                  >
+                    <BrandMark
+                      brandIcon={form.brandIcon}
+                      logoUrl={form.logoUrl}
+                      primaryColor={form.primaryColor}
+                    />
                     <span className="text-[11px] font-black uppercase tracking-[1.4px] text-white/65">
                       Sin foto cargada
                     </span>
@@ -314,6 +442,9 @@ export function SettingsManager() {
                 <p className="mb-3 text-sm leading-6 text-[#555] dark:text-[#a0a0a0]">
                   Esta imagen aparece arriba del formulario inicial del cliente.
                   Conviene usar una foto horizontal del truck, hamburguesas o fachada.
+                </p>
+                <p className="mb-3 text-xs font-semibold text-[#777] dark:text-[#b4b4b4]">
+                  La adaptamos automáticamente hasta {MAX_IMAGE_DIMENSION}px y 1.6MB.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -334,7 +465,7 @@ export function SettingsManager() {
                 <input
                   accept="image/jpeg,image/png,image/webp"
                   className="hidden"
-                  onChange={(event) => importHeroImage(event.target.files?.[0])}
+                  onChange={(event) => void importImage("heroImageUrl", event.target.files?.[0])}
                   ref={fileInputRef}
                   type="file"
                 />
@@ -343,7 +474,7 @@ export function SettingsManager() {
           </Panel>
 
           <Panel eyebrow="Operación" title="Ajustes generales">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-4">
               <Field label="Color principal">
                 <div className="flex gap-2">
                   <input
@@ -374,7 +505,72 @@ export function SettingsManager() {
                 </select>
               </Field>
               <Field label="Sonido beeper">
-                <input className="admin-input opacity-70" disabled value="classic" />
+                <div className="grid gap-2">
+                  {BEEP_SOUND_OPTIONS.map((option) => {
+                    const selected = form.beepSoundId === option.id;
+
+                    return (
+                      <button
+                        className="flex items-center justify-between rounded-[12px] border px-3 py-3 text-left transition"
+                        key={option.id}
+                        onClick={() => {
+                          updateForm("beepSoundId", option.id);
+                          playBeeperSound(option.id);
+                        }}
+                        style={
+                          selected
+                            ? {
+                                borderColor: normalizeHexColor(form.primaryColor),
+                                backgroundColor: `${normalizeHexColor(form.primaryColor)}1f`,
+                              }
+                            : undefined
+                        }
+                        type="button"
+                      >
+                        <div>
+                          <div className="text-sm font-black text-[#111] dark:text-[#f5f5f5]">
+                            {option.label}
+                          </div>
+                          <div className="text-xs text-[#777] dark:text-[#b4b4b4]">
+                            {option.description}
+                          </div>
+                        </div>
+                        <span
+                          className="rounded-full px-2.5 py-1 text-[11px] font-black"
+                          style={
+                            selected
+                              ? {
+                                  backgroundColor: normalizeHexColor(form.primaryColor),
+                                  color: getContrastColor(form.primaryColor),
+                                }
+                              : {
+                                  backgroundColor: "rgba(148, 163, 184, 0.18)",
+                                  color: "var(--foreground)",
+                                }
+                          }
+                        >
+                          {selected ? "Elegido" : "Probar"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+              <Field label="Cooldown retiro cliente (seg)">
+                <input
+                  className="admin-input"
+                  max={300}
+                  min={0}
+                  onChange={(event) =>
+                    updateForm(
+                      "customerPickupCooldownSeconds",
+                      Number(event.target.value || 0),
+                    )
+                  }
+                  step={1}
+                  type="number"
+                  value={form.customerPickupCooldownSeconds}
+                />
               </Field>
             </div>
             <div className="mt-4 rounded-[16px] border border-[#f0ddd0] bg-[#fff8f1] p-4 dark:border-[#2e2e2e] dark:bg-[#242424]">
@@ -392,7 +588,7 @@ export function SettingsManager() {
                   aria-pressed={form.allowOrderModifications}
                   className={
                     form.allowOrderModifications
-                      ? "relative h-7 w-14 rounded-full bg-[#f97316] transition"
+                      ? "relative h-7 w-14 rounded-full transition"
                       : "relative h-7 w-14 rounded-full bg-[#d7c7ba] transition"
                   }
                   onClick={() =>
@@ -400,6 +596,11 @@ export function SettingsManager() {
                       "allowOrderModifications",
                       !form.allowOrderModifications,
                     )
+                  }
+                  style={
+                    form.allowOrderModifications
+                      ? { backgroundColor: normalizeHexColor(form.primaryColor) }
+                      : undefined
                   }
                   type="button"
                 >
@@ -411,6 +612,78 @@ export function SettingsManager() {
                     }
                   />
                 </button>
+              </div>
+            </div>
+          </Panel>
+
+          <Panel eyebrow="Cuenta" title="Sesion y preferencias">
+            <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="rounded-[16px] border border-[#e8e8e8] bg-[#fafafa] p-4 dark:border-[#2e2e2e] dark:bg-[#242424]">
+                <p className="text-xs font-bold uppercase tracking-[0.8px] text-[#999]">
+                  Cuenta actual
+                </p>
+                <p className="mt-2 text-sm font-black text-[#111] dark:text-[#f5f5f5]">
+                  {sessionQuery.data?.staffUser.fullName ?? "Administrador"}
+                </p>
+                <p className="mt-1 text-xs text-[#777] dark:text-[#b4b4b4]">
+                  {sessionQuery.data?.staffUser.email ?? "sin email"}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    className="admin-muted-button"
+                    disabled={logoutMutation.isPending}
+                    onClick={() => logoutMutation.mutate()}
+                    type="button"
+                  >
+                    {logoutMutation.isPending ? "Saliendo..." : "Cerrar sesion"}
+                  </button>
+                  <button
+                    className="admin-primary-button"
+                    disabled={logoutMutation.isPending}
+                    onClick={() => logoutMutation.mutate()}
+                    type="button"
+                  >
+                    Cambiar cuenta
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4 rounded-[16px] border border-[#e8e8e8] bg-[#fafafa] p-4 dark:border-[#2e2e2e] dark:bg-[#242424]">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.8px] text-[#999]">
+                    Idioma del admin
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <PreferenceButton
+                      active={languagePreference === "es"}
+                      label="Espanol"
+                      onClick={() => updateLanguagePreference("es")}
+                    />
+                    <PreferenceButton
+                      active={languagePreference === "en"}
+                      label="English"
+                      onClick={() => updateLanguagePreference("en")}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.8px] text-[#999]">
+                    Modo del admin
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <PreferenceButton
+                      active={!darkModePreference}
+                      label={languagePreference === "en" ? "Light" : "Claro"}
+                      onClick={() => updateDarkModePreference(false)}
+                    />
+                    <PreferenceButton
+                      active={darkModePreference}
+                      label={languagePreference === "en" ? "Dark" : "Oscuro"}
+                      onClick={() => updateDarkModePreference(true)}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </Panel>
@@ -433,7 +706,10 @@ function Panel({
 }) {
   return (
     <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
-      <p className="mb-1 text-[11px] font-black uppercase tracking-[1px] text-[#f97316]">
+      <p
+        className="mb-1 text-[11px] font-black uppercase tracking-[1px]"
+        style={{ color: "var(--admin-accent)" }}
+      >
         {eyebrow}
       </p>
       <h2 className="mb-4 text-base font-black text-[#111] dark:text-[#f5f5f5]">
@@ -455,15 +731,52 @@ function Field({ children, label }: { children: React.ReactNode; label: string }
   );
 }
 
+function PreferenceButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="rounded-[12px] border px-3 py-2 text-sm font-bold transition"
+      onClick={onClick}
+      style={
+        active
+          ? {
+              backgroundColor: "var(--admin-accent-soft)",
+              borderColor: "var(--admin-accent)",
+              color: "var(--admin-accent)",
+            }
+          : undefined
+      }
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
 function BrandMark({
   brandIcon,
   logoUrl,
+  primaryColor,
 }: {
   brandIcon: string;
   logoUrl: string | null;
+  primaryColor: string;
 }) {
   return (
-    <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#f97316] text-[30px] text-white shadow-[0_6px_18px_rgba(249,115,22,0.25)]">
+    <div
+      className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-[16px] text-[30px] shadow-[0_6px_18px_rgba(0,0,0,0.18)]"
+      style={{
+        backgroundColor: normalizeHexColor(primaryColor),
+        color: getContrastColor(primaryColor),
+      }}
+    >
       {logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img alt="Logo del foodtruck" className="size-full object-cover" src={logoUrl} />
@@ -483,13 +796,20 @@ function PreviewCard({ form }: { form: SettingsForm }) {
             Vista previa
           </p>
           <div className="mt-1 flex items-center gap-2">
-            <BrandMark brandIcon={form.brandIcon} logoUrl={form.logoUrl} />
+            <BrandMark
+              brandIcon={form.brandIcon}
+              logoUrl={form.logoUrl}
+              primaryColor={form.primaryColor}
+            />
             <h2 className="text-base font-black">Landing cliente</h2>
           </div>
         </div>
         <span
-          className="rounded-full px-3 py-1 text-xs font-black text-white"
-          style={{ backgroundColor: form.primaryColor }}
+          className="rounded-full px-3 py-1 text-xs font-black"
+          style={{
+            backgroundColor: form.primaryColor,
+            color: getContrastColor(form.primaryColor),
+          }}
         >
           /menu
         </span>
@@ -499,14 +819,19 @@ function PreviewCard({ form }: { form: SettingsForm }) {
         <div className="relative h-[190px] overflow-hidden bg-[#1c1009]">
           {form.heroImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img
-              alt=""
-              className="size-full object-cover"
-              src={form.heroImageUrl}
-            />
+            <img alt="" className="size-full object-cover" src={form.heroImageUrl} />
           ) : (
-            <div className="flex size-full flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,#c2410c_0%,#f97316_45%,#fed7aa_100%)]">
-              <BrandMark brandIcon={form.brandIcon} logoUrl={form.logoUrl} />
+            <div
+              className="flex size-full flex-col items-center justify-center gap-2"
+              style={{
+                background: `linear-gradient(135deg, ${normalizeHexColor(form.primaryColor)} 0%, ${normalizeHexColor(form.primaryColor)} 45%, ${normalizeHexColor(form.primaryColor)}33 100%)`,
+              }}
+            >
+              <BrandMark
+                brandIcon={form.brandIcon}
+                logoUrl={form.logoUrl}
+                primaryColor={form.primaryColor}
+              />
               <span className="text-[10px] font-bold uppercase tracking-[2px] text-white/60">
                 Foto del truck
               </span>

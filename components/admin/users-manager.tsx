@@ -2,13 +2,23 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
+import { useTransientMessage } from "@/hooks/use-transient-message";
 import { PERMISSIONS } from "@/lib/constants/permissions";
 import { fetchJson } from "@/lib/utils/http";
 
 type PermissionKey = (typeof PERMISSIONS)[number];
+
+type AdminSession = {
+  permissions: PermissionKey[];
+  staffUser: {
+    id: string;
+    email: string;
+    fullName: string;
+  };
+};
 
 type Role = {
   id: string;
@@ -71,6 +81,7 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   "orders.approve_mod": "Aprobar modificaciones",
   "hours.write": "Editar horarios",
   "users.manage": "Ver usuarios",
+  "users.write": "Crear y eliminar usuarios",
   "roles.manage": "Editar roles",
   "dashboard.view": "Ver métricas",
   "settings.write": "Editar configuración",
@@ -97,7 +108,7 @@ const PERMISSION_GROUPS: Array<{ title: string; permissions: PermissionKey[] }> 
   },
   {
     title: "Usuarios",
-    permissions: ["users.manage", "roles.manage"],
+    permissions: ["users.manage", "users.write", "roles.manage"],
   },
   {
     title: "Dashboard",
@@ -131,6 +142,10 @@ export function UsersManager() {
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useTransientMessage(feedback, () => setFeedback(null));
+  useTransientMessage(error, () => setError(null), 4_200);
 
   const rolesQuery = useQuery({
     queryKey: ["admin", "roles"],
@@ -140,9 +155,26 @@ export function UsersManager() {
     queryKey: ["admin", "staff-users"],
     queryFn: () => fetchJson<{ users: StaffUser[] }>("/api/admin/staff-users"),
   });
+  const sessionQuery = useQuery({
+    queryKey: ["admin", "session"],
+    queryFn: () => fetchJson<AdminSession>("/api/admin/session"),
+  });
 
   const roles = rolesQuery.data?.roles ?? EMPTY_ROLES;
   const users = usersQuery.data?.users ?? EMPTY_USERS;
+  const permissions = sessionQuery.data?.permissions ?? [];
+  const canWriteUsers = permissions.includes("users.write");
+
+  useEffect(() => {
+    if (!showUserModal || userForm.id || userForm.roleId || !roles.length) {
+      return;
+    }
+
+    setUserForm((current) => ({
+      ...current,
+      roleId: roles[0]?.id ?? "",
+    }));
+  }, [roles, showUserModal, userForm.id, userForm.roleId]);
 
   async function refreshAll() {
     await Promise.all([
@@ -173,10 +205,15 @@ export function UsersManager() {
       });
     },
     onSuccess: async () => {
+      setError(null);
       setFeedback("Rol guardado");
       setRoleForm(EMPTY_ROLE_FORM);
       setShowRoleModal(false);
       await refreshAll();
+    },
+    onError: (mutationError) => {
+      setFeedback(null);
+      setError(mutationError instanceof Error ? mutationError.message : "No pudimos guardar el rol");
     },
   });
 
@@ -205,10 +242,17 @@ export function UsersManager() {
       });
     },
     onSuccess: async () => {
+      setError(null);
       setFeedback("Usuario guardado");
       setUserForm(EMPTY_USER_FORM);
       setShowUserModal(false);
       await refreshAll();
+    },
+    onError: (mutationError) => {
+      setFeedback(null);
+      setError(
+        mutationError instanceof Error ? mutationError.message : "No pudimos guardar el usuario",
+      );
     },
   });
 
@@ -216,25 +260,36 @@ export function UsersManager() {
     mutationFn: async (id: string) =>
       fetchJson(`/api/admin/roles/${id}`, { method: "DELETE" }),
     onSuccess: async () => {
+      setError(null);
       setFeedback("Rol eliminado");
       await refreshAll();
+    },
+    onError: (mutationError) => {
+      setFeedback(null);
+      setError(
+        mutationError instanceof Error ? mutationError.message : "No pudimos eliminar el rol",
+      );
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (id: string) => fetchJson(`/api/admin/staff-users/${id}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      setError(null);
+      setFeedback("Usuario eliminado");
+      await refreshAll();
+    },
+    onError: (mutationError) => {
+      setFeedback(null);
+      setError(
+        mutationError instanceof Error ? mutationError.message : "No pudimos eliminar el usuario",
+      );
     },
   });
 
   function openNewUser() {
+    setError(null);
     setUserForm({ ...EMPTY_USER_FORM, roleId: roles[0]?.id ?? "" });
-    setShowUserModal(true);
-  }
-
-  function openEditUser(user: StaffUser) {
-    setUserForm({
-      id: user.id,
-      email: user.email,
-      fullName: user.full_name,
-      password: "",
-      roleId: user.role_id,
-      active: user.active,
-    });
     setShowUserModal(true);
   }
 
@@ -252,24 +307,15 @@ export function UsersManager() {
     setShowRoleModal(true);
   }
 
-  function toggleUserActive(user: StaffUser) {
-    void userMutation.mutate({
-      id: user.id,
-      email: user.email,
-      fullName: user.full_name,
-      password: "",
-      roleId: user.role_id,
-      active: !user.active,
-    });
-  }
-
   return (
     <AdminShell
       action={
         activeTab === "users" ? (
-          <button className="admin-primary-button" onClick={openNewUser} type="button">
-            + Nuevo usuario
-          </button>
+          canWriteUsers ? (
+            <button className="admin-primary-button" onClick={openNewUser} type="button">
+              + Nuevo usuario
+            </button>
+          ) : null
         ) : (
           <button className="admin-primary-button" onClick={openNewRole} type="button">
             + Nuevo rol
@@ -280,8 +326,13 @@ export function UsersManager() {
       title="Usuarios y roles"
     >
       {feedback ? (
-        <div className="mb-5 rounded-[10px] border border-[#f97316]/25 bg-[#fff0e6] px-4 py-3 text-[13px] font-bold text-[#f97316]">
+        <div className="brand-accent-notice mb-5 rounded-[10px] border px-4 py-3 text-[13px] font-bold">
           {feedback}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="mb-5 rounded-[10px] border border-[#ef4444]/25 bg-[#ef4444]/10 px-4 py-3 text-[13px] font-bold text-[#ef4444]">
+          {error}
         </div>
       ) : null}
 
@@ -300,8 +351,8 @@ export function UsersManager() {
 
       {activeTab === "users" ? (
         <UsersTable
-          onEdit={openEditUser}
-          onToggleActive={toggleUserActive}
+          canDeleteUsers={canWriteUsers}
+          onDelete={(user) => deleteUserMutation.mutate(user.id)}
           users={users}
         />
       ) : (
@@ -320,8 +371,12 @@ export function UsersManager() {
       {showUserModal ? (
         <UserModal
           form={userForm}
+          isLoadingRoles={rolesQuery.isLoading}
           onChange={setUserForm}
-          onClose={() => setShowUserModal(false)}
+          onClose={() => {
+            setShowUserModal(false);
+            setUserForm(EMPTY_USER_FORM);
+          }}
           onSubmit={() => userMutation.mutate(userForm)}
           roles={roles}
         />
@@ -364,12 +419,12 @@ function TabButton({
 }
 
 function UsersTable({
-  onEdit,
-  onToggleActive,
+  canDeleteUsers,
+  onDelete,
   users,
 }: {
-  onEdit: (user: StaffUser) => void;
-  onToggleActive: (user: StaffUser) => void;
+  canDeleteUsers: boolean;
+  onDelete: (user: StaffUser) => void;
   users: StaffUser[];
 }) {
   return (
@@ -381,7 +436,7 @@ function UsersTable({
             <TableHead>Email</TableHead>
             <TableHead>Rol</TableHead>
             <TableHead>Estado</TableHead>
-            <TableHead>Acciones</TableHead>
+            {canDeleteUsers ? <TableHead /> : null}
           </tr>
         </thead>
         <tbody>
@@ -404,31 +459,24 @@ function UsersTable({
                 {user.email}
               </td>
               <td className="border-b border-[#e8e8e8] px-4 py-[13px] dark:border-[#2e2e2e]">
-                <span className="rounded-md bg-[#fff0e6] px-2.5 py-1 text-[11px] font-bold text-[#f97316]">
+                <span className="brand-accent-chip rounded-md px-2.5 py-1 text-[11px] font-bold">
                   {user.role_name}
                 </span>
               </td>
               <td className="border-b border-[#e8e8e8] px-4 py-[13px] dark:border-[#2e2e2e]">
                 <StatusBadge active={user.active} />
               </td>
-              <td className="border-b border-[#e8e8e8] px-4 py-[13px] dark:border-[#2e2e2e]">
-                <div className="flex gap-1.5">
-                  <button
-                    className="rounded-lg bg-[#f2f2f2] px-3 py-1.5 text-xs font-semibold text-[#555] dark:bg-[#242424] dark:text-[#a0a0a0]"
-                    onClick={() => onEdit(user)}
-                    type="button"
-                  >
-                    Editar
-                  </button>
+              {canDeleteUsers ? (
+                <td className="border-b border-[#e8e8e8] px-4 py-[13px] text-right dark:border-[#2e2e2e]">
                   <button
                     className="rounded-lg bg-[#ef4444]/10 px-3 py-1.5 text-xs font-semibold text-[#ef4444]"
-                    onClick={() => onToggleActive(user)}
+                    onClick={() => onDelete(user)}
                     type="button"
                   >
-                    {user.active ? "Desactivar" : "Activar"}
+                    Eliminar
                   </button>
-                </div>
-              </td>
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>
@@ -437,7 +485,7 @@ function UsersTable({
   );
 }
 
-function TableHead({ children }: { children: React.ReactNode }) {
+function TableHead({ children }: { children?: React.ReactNode }) {
   return (
     <th className="bg-[#f2f2f2] px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.8px] text-[#999] dark:bg-[#242424]">
       {children}
@@ -479,7 +527,7 @@ function RoleCard({
             {role.is_system ? "🔒 Rol protegido" : "Rol personalizado"}
           </div>
         </div>
-        <span className="rounded-lg bg-[#fff0e6] px-2.5 py-1 text-[11px] font-bold text-[#f97316]">
+        <span className="brand-accent-chip rounded-lg px-2.5 py-1 text-[11px] font-bold">
           {role.name}
         </span>
       </div>
@@ -501,7 +549,7 @@ function RoleCard({
               >
                 <input
                   checked={has}
-                  className="size-3.5 accent-[#f97316]"
+                  className="brand-accent-checkbox size-3.5"
                   disabled
                   readOnly
                   type="checkbox"
@@ -509,7 +557,7 @@ function RoleCard({
                 <span
                   className="text-xs"
                   style={{
-                    color: has ? "var(--text, #111)" : "#999",
+                    color: has ? "var(--foreground)" : "var(--muted-foreground)",
                     fontWeight: has ? 500 : 400,
                   }}
                 >
@@ -541,17 +589,28 @@ function RoleCard({
 
 function UserModal({
   form,
+  isLoadingRoles,
   onChange,
   onClose,
   onSubmit,
   roles,
 }: {
   form: UserForm;
+  isLoadingRoles: boolean;
   onChange: React.Dispatch<React.SetStateAction<UserForm>>;
   onClose: () => void;
   onSubmit: () => void;
   roles: Role[];
 }) {
+  const passwordTooShort = !form.id && form.password.length < 8;
+  const disabled =
+    isLoadingRoles ||
+    roles.length === 0 ||
+    !form.fullName.trim() ||
+    !form.email.trim() ||
+    !form.roleId ||
+    passwordTooShort;
+
   return (
     <ModalFrame onClose={onClose} title={form.id ? "Editar usuario" : "Nuevo usuario"}>
       <div className="space-y-3.5">
@@ -564,6 +623,11 @@ function UserModal({
             placeholder="Cocina Turno Noche"
             value={form.fullName}
           />
+          {passwordTooShort ? (
+            <p className="mt-1.5 text-[11px] font-semibold text-[#ef4444]">
+              La contraseÃ±a debe tener al menos 8 caracteres.
+            </p>
+          ) : null}
         </Field>
         <Field label="Email">
           <input
@@ -579,6 +643,7 @@ function UserModal({
         <Field label={form.id ? "Nueva contraseña" : "Contraseña"}>
           <input
             className="admin-input"
+            minLength={form.id ? undefined : 8}
             onChange={(event) =>
               onChange((current) => ({ ...current, password: event.target.value }))
             }
@@ -590,6 +655,7 @@ function UserModal({
         <Field label="Rol">
           <select
             className="admin-input"
+            disabled={isLoadingRoles || roles.length === 0}
             onChange={(event) =>
               onChange((current) => ({ ...current, roleId: event.target.value }))
             }
@@ -610,13 +676,23 @@ function UserModal({
         />
       </div>
       <div className="mt-6 flex gap-2.5">
-        <button className="admin-primary-button flex-[2]" onClick={onSubmit} type="button">
+        <button
+          className="admin-primary-button flex-[2] disabled:opacity-50"
+          disabled={disabled}
+          onClick={onSubmit}
+          type="button"
+        >
           Guardar usuario
         </button>
         <button className="admin-muted-button flex-1" onClick={onClose} type="button">
           Cancelar
         </button>
       </div>
+      {disabled && passwordTooShort ? (
+        <p className="mt-2 text-center text-[11px] font-semibold text-[#999]">
+          CompletÃ¡ una contraseÃ±a de 8 caracteres o mÃ¡s para habilitar el guardado.
+        </p>
+      ) : null}
     </ModalFrame>
   );
 }
@@ -667,7 +743,7 @@ function RoleModal({
                 >
                   <input
                     checked={form.permissions.includes(permission)}
-                    className="size-3.5 accent-[#f97316]"
+                    className="brand-accent-checkbox size-3.5"
                     onChange={() => togglePermission(permission)}
                     type="checkbox"
                   />

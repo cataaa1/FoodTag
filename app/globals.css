@@ -49,14 +49,24 @@
 }
 
 :root {
+  --brand-primary: #f97316;
+  --brand-primary-contrast: #fffaf5;
+  --brand-primary-soft: rgba(249, 115, 22, 0.14);
+  --brand-primary-soft-strong: rgba(249, 115, 22, 0.2);
+  --brand-primary-glow: rgba(249, 115, 22, 0.3);
+  --admin-accent: var(--brand-primary);
+  --admin-accent-contrast: var(--brand-primary-contrast);
+  --admin-accent-soft: var(--brand-primary-soft);
+  --admin-accent-soft-strong: var(--brand-primary-soft-strong);
+  --admin-accent-glow: var(--brand-primary-glow);
   --background: #fff7ef;
   --foreground: #1c1009;
   --card: #fffdf9;
   --card-foreground: #1c1009;
   --popover: #fffdf9;
   --popover-foreground: #1c1009;
-  --primary: #f97316;
-  --primary-foreground: #fffaf5;
+  --primary: var(--brand-primary);
+  --primary-foreground: var(--brand-primary-contrast);
   --secondary: #fff0e3;
   --secondary-foreground: #7c4a23;
   --muted: #f9ebe0;
@@ -66,8 +76,8 @@
   --destructive: #ef4444;
   --border: #efd9c7;
   --input: #efd9c7;
-  --ring: #f97316;
-  --chart-1: #f97316;
+  --ring: var(--brand-primary);
+  --chart-1: var(--brand-primary);
   --chart-2: #22c55e;
   --chart-3: #eab308;
   --chart-4: #3b82f6;
@@ -75,12 +85,12 @@
   --radius: 1rem;
   --sidebar: #fffdf9;
   --sidebar-foreground: #2f180c;
-  --sidebar-primary: #f97316;
-  --sidebar-primary-foreground: #fffaf5;
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: var(--brand-primary-contrast);
   --sidebar-accent: #fff0e6;
   --sidebar-accent-foreground: #8f4300;
   --sidebar-border: #efd9c7;
-  --sidebar-ring: #f97316;
+  --sidebar-ring: var(--brand-primary);
 }
 
 .dark {
@@ -90,8 +100,8 @@
   --card-foreground: #f7f1eb;
   --popover: #1a1a1d;
   --popover-foreground: #f7f1eb;
-  --primary: #f97316;
-  --primary-foreground: #fffaf5;
+  --primary: var(--brand-primary);
+  --primary-foreground: var(--brand-primary-contrast);
   --secondary: #252325;
   --secondary-foreground: #ded0c3;
   --muted: #252325;
@@ -101,20 +111,20 @@
   --destructive: #ef4444;
   --border: #2f2f34;
   --input: #2f2f34;
-  --ring: #f97316;
-  --chart-1: #f97316;
+  --ring: var(--brand-primary);
+  --chart-1: var(--brand-primary);
   --chart-2: #22c55e;
   --chart-3: #eab308;
   --chart-4: #60a5fa;
   --chart-5: #f87171;
   --sidebar: #161618;
   --sidebar-foreground: #f7f1eb;
-  --sidebar-primary: #f97316;
-  --sidebar-primary-foreground: #fffaf5;
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: var(--brand-primary-contrast);
   --sidebar-accent: #281d15;
   --sidebar-accent-foreground: #ffd8bb;
   --sidebar-border: #2f2f34;
-  --sidebar-ring: #f97316;
+  --sidebar-ring: var(--brand-primary);
 }
 
 @layer base {
@@ -130,14 +140,14 @@
     @apply bg-background text-foreground;
     min-height: 100vh;
     background-image:
-      radial-gradient(circle at top, rgba(249, 115, 22, 0.15), transparent 32%),
+      radial-gradient(circle at top, var(--brand-primary-soft-strong), transparent 32%),
       linear-gradient(to bottom, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
   }
 }
 
 @layer utilities {
   .surface-glow {
-    box-shadow: 0 18px 60px rgba(249, 115, 22, 0.12);
+    box-shadow: 0 18px 60px var(--brand-primary-soft);
   }
 
   .surface-card {
@@ -154,6 +164,11 @@
     color: #111;
   }
 
+  .admin-input:focus {
+    border-color: var(--admin-accent);
+    box-shadow: 0 0 0 3px var(--admin-accent-soft);
+  }
+
   .dark .admin-input {
     border-color: #2e2e2e;
     background: #111;
@@ -162,12 +177,13 @@
 
   .admin-primary-button {
     @apply rounded-[10px] px-4 py-2.5 text-[13px] font-bold text-white transition;
-    background: #f97316;
-    box-shadow: 0 2px 8px rgba(249, 115, 22, 0.25);
+    background: var(--admin-accent);
+    color: var(--admin-accent-contrast);
+    box-shadow: 0 2px 8px var(--admin-accent-glow);
   }
 
   .admin-primary-button:hover {
-    background: #ea580c;
+    filter: brightness(0.95);
   }
 
   .admin-muted-button {
@@ -183,8 +199,8 @@
 
   .option-add-button {
     @apply rounded-lg px-3.5 py-2 text-xs font-bold transition;
-    background: #fff0e6;
-    color: #f97316;
+    background: var(--admin-accent-soft);
+    color: var(--admin-accent);
   }
 
   .admin-toggle {
@@ -195,7 +211,7 @@
   }
 
   .admin-toggle[data-checked="true"] {
-    background: #f97316;
+    background: var(--admin-accent);
   }
 
   .admin-toggle-thumb {
@@ -216,6 +232,64 @@
   }
 
   .phone-input:focus {
-    border-color: #f97316;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px var(--brand-primary-soft);
+  }
+
+  .phone-primary-button {
+    @apply w-full rounded-[14px] px-6 py-4 text-[17px] font-black tracking-[-0.2px] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+    background: var(--brand-primary);
+    color: var(--brand-primary-contrast);
+    box-shadow: 0 4px 16px var(--brand-primary-glow);
+  }
+
+  .phone-primary-button:active {
+    filter: brightness(0.94);
+  }
+
+  .brand-accent-notice {
+    border-color: var(--admin-accent-soft-strong);
+    background: var(--admin-accent-soft);
+    color: var(--admin-accent);
+  }
+
+  .brand-accent-chip {
+    background: var(--admin-accent-soft);
+    color: var(--admin-accent);
+  }
+
+  .brand-accent-dashed-action {
+    @apply border border-dashed bg-transparent text-xs font-semibold transition;
+    border-color: #e8e8e8;
+    color: #999;
+  }
+
+  .brand-accent-dashed-action:hover {
+    border-color: var(--admin-accent);
+    color: var(--admin-accent);
+  }
+
+  .brand-accent-icon-button {
+    color: #999;
+    transition: color 150ms ease;
+  }
+
+  .brand-accent-icon-button:hover {
+    color: var(--admin-accent);
+  }
+
+  .brand-accent-checkbox {
+    accent-color: var(--admin-accent);
+  }
+
+  .brand-accent-hover-border {
+    transition:
+      border-color 150ms ease,
+      color 150ms ease;
+  }
+
+  .brand-accent-hover-border:hover {
+    border-color: var(--brand-primary);
+    color: var(--brand-primary-contrast);
   }
 }

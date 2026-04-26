@@ -4,12 +4,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { getContrastColor, normalizeHexColor } from "@/lib/utils/color";
 import { fetchJson } from "@/lib/utils/http";
 
 type TruckIdentity = {
   truckName: string;
   brandIcon: string;
   logoUrl: string | null;
+  primaryColor: string;
 };
 
 export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
@@ -23,6 +25,7 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
     queryFn: () => fetchJson<TruckIdentity>("/api/customer/truck-status"),
   });
   const identity = identityQuery.data;
+  const accentColor = normalizeHexColor(identity?.primaryColor);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,6 +64,7 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
           <BrandMark
             brandIcon={identity?.brandIcon ?? "🚚"}
             logoUrl={identity?.logoUrl ?? null}
+            primaryColor={accentColor}
           />
           <h1 className="text-2xl font-black tracking-[-0.5px]">
             {identity?.truckName ?? "FoodTag"} Staff
@@ -74,12 +78,13 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
               Email
             </span>
             <input
-              className="w-full rounded-[10px] border border-[#2e2e2e] bg-[#242424] px-4 py-3.5 text-[15px] font-medium text-[#f5f5f5] outline-none transition focus:border-[#f97316]"
               autoComplete="email"
-              type="email"
-              value={email}
+              className="w-full rounded-[10px] border border-[#2e2e2e] bg-[#242424] px-4 py-3.5 text-[15px] font-medium text-[#f5f5f5] outline-none transition focus:ring-2 focus:ring-white/5"
+              style={{ borderColor: accentColor }}
               onChange={(event) => setEmail(event.target.value)}
               required
+              type="email"
+              value={email}
             />
           </label>
           <label>
@@ -87,13 +92,13 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
               Contraseña
             </span>
             <input
-              className="w-full rounded-[10px] border border-[#2e2e2e] bg-[#242424] px-4 py-3.5 text-[15px] font-medium text-[#f5f5f5] outline-none transition focus:border-[#f97316]"
               autoComplete="current-password"
-              type="password"
-              value={password}
+              className="w-full rounded-[10px] border border-[#2e2e2e] bg-[#242424] px-4 py-3.5 text-[15px] font-medium text-[#f5f5f5] outline-none transition focus:ring-2 focus:ring-white/5"
               onChange={(event) => setPassword(event.target.value)}
               placeholder="••••••••"
               required
+              type="password"
+              value={password}
             />
           </label>
 
@@ -104,8 +109,9 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
           ) : null}
 
           <button
-            className="mt-2 rounded-xl bg-[#f97316] px-5 py-3.5 text-[15px] font-black text-white shadow-[0_4px_16px_rgba(249,115,22,0.30)] transition active:scale-[0.98] disabled:opacity-50"
+            className="mt-2 rounded-xl px-5 py-3.5 text-[15px] font-black shadow-[0_4px_16px_rgba(0,0,0,0.30)] transition active:scale-[0.98] disabled:opacity-50"
             disabled={loading}
+            style={{ backgroundColor: accentColor, color: getContrastColor(accentColor) }}
             type="submit"
           >
             {loading ? "Entrando..." : "Entrar"}
@@ -123,12 +129,17 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
 function BrandMark({
   brandIcon,
   logoUrl,
+  primaryColor,
 }: {
   brandIcon: string;
   logoUrl: string | null;
+  primaryColor: string;
 }) {
   return (
-    <div className="mx-auto mb-4 flex size-16 items-center justify-center overflow-hidden rounded-[18px] bg-[#f97316] text-3xl text-white shadow-[0_4px_24px_rgba(249,115,22,0.30)]">
+    <div
+      className="mx-auto mb-4 flex size-16 items-center justify-center overflow-hidden rounded-[18px] text-3xl shadow-[0_4px_24px_rgba(0,0,0,0.30)]"
+      style={{ backgroundColor: primaryColor, color: getContrastColor(primaryColor) }}
+    >
       {logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img alt="" className="size-full object-cover" src={logoUrl} />

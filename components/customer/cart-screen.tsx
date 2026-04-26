@@ -57,15 +57,16 @@ export function CartScreen() {
     onSuccess: (data) => {
       clearCart();
 
+      // Guardar la URL de checkout para mostrársela al usuario desde la pantalla del ticket.
+      // window.open desde async callback es bloqueado en Safari móvil, así que el usuario
+      // toca el botón de pago directamente desde /ticket/[id] (gesto directo → sin bloqueo).
       if (data.checkoutUrl) {
-        if (data.localCheckout) {
-          window.open(data.checkoutUrl, "_blank", "noopener,noreferrer");
-          router.push(`/ticket/${data.order.id}`);
-          return;
-        }
-
-        window.location.assign(data.checkoutUrl);
-        return;
+        try {
+          sessionStorage.setItem(
+            `foodtag-checkout-${data.order.id}`,
+            data.checkoutUrl,
+          );
+        } catch { /* ignorar si storage no disponible */ }
       }
 
       router.push(`/ticket/${data.order.id}`);
@@ -137,7 +138,7 @@ export function CartScreen() {
                   <p className="mt-0.5 text-xs text-[#9a7560]">{item.notes}</p>
                 ) : null}
               </div>
-              <p className="text-[15px] font-black text-[#f97316]">
+              <p className="text-[15px] font-black" style={{ color: "var(--brand-primary)" }}>
                 {formatCurrency(item.unitPriceCents * item.quantity)}
               </p>
             </div>
@@ -154,7 +155,11 @@ export function CartScreen() {
                   {item.quantity}
                 </span>
                 <button
-                  className="flex size-[30px] items-center justify-center rounded-lg bg-[#f97316] text-base font-black text-white"
+                  className="flex size-[30px] items-center justify-center rounded-lg text-base font-black"
+                  style={{
+                    backgroundColor: "var(--brand-primary)",
+                    color: "var(--brand-primary-contrast)",
+                  }}
                   onClick={() =>
                     addItem({
                       menuItemId: item.menuItemId,
@@ -174,10 +179,9 @@ export function CartScreen() {
               <p className="text-xs text-[#9a7560]">{formatCurrency(item.unitPriceCents)} c/u</p>
             </div>
             <input
-              className="mt-3 w-full rounded-[10px] border border-[#f0ddd0] bg-[#fffbf7] px-3 py-2 text-xs font-medium outline-none focus:border-[#f97316]"
+              className="phone-input mt-3 !rounded-[10px] !px-3 !py-2 !text-xs"
               onChange={(event) => updateNotes(item.cartItemId, event.target.value)}
               placeholder="Nota adicional:"
-              
             />
           </article>
         ))}
@@ -189,11 +193,19 @@ export function CartScreen() {
               <button
                 className={
                   tipPercent === option
-                    ? "min-w-14 flex-1 rounded-[10px] bg-[#f97316] px-1.5 py-2.5 text-[13px] font-bold text-white"
+                    ? "min-w-14 flex-1 rounded-[10px] px-1.5 py-2.5 text-[13px] font-bold"
                     : "min-w-14 flex-1 rounded-[10px] bg-[#f0ddd0] px-1.5 py-2.5 text-[13px] font-bold text-[#6b4e35]"
                 }
                 key={option}
                 onClick={() => setTipPercent(option)}
+                style={
+                  tipPercent === option
+                    ? {
+                        backgroundColor: "var(--brand-primary)",
+                        color: "var(--brand-primary-contrast)",
+                      }
+                    : undefined
+                }
                 type="button"
               >
                 {option === 0 ? "Sin propina" : `${option}%`}

@@ -4,6 +4,19 @@ import { PERMISSIONS } from "@/lib/constants/permissions";
 
 export const permissionSchema = z.enum(PERMISSIONS);
 
+const dataImageSchema = z
+  .string()
+  .max(2_750_000, "La imagen no puede superar los 2MB")
+  .refine(
+    (value) =>
+      value.startsWith("data:image/jpeg;base64,") ||
+      value.startsWith("data:image/png;base64,") ||
+      value.startsWith("data:image/webp;base64,"),
+    "UsÃ¡ una imagen JPG, PNG o WEBP",
+  );
+
+const optionalImageSchema = z.union([z.string().url(), dataImageSchema]).nullable();
+
 export const categoryRowSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
@@ -66,7 +79,7 @@ export const menuItemCreateSchema = z.object({
   name: z.string().trim().min(2).max(80),
   description: z.string().trim().max(240).nullable(),
   priceCents: z.number().int().min(0).max(999_999),
-  photoUrl: z.string().url().nullable(),
+  photoUrl: optionalImageSchema,
   available: z.boolean().default(true),
   hasVariants: z.boolean().default(false),
   position: z.number().int().min(0),

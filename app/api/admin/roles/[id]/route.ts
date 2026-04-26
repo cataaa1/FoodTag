@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody, parseParams } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
+import { writeAuditLog } from "@/lib/data/audit-log";
 import { getDb } from "@/lib/db/client";
 import { idParamSchema, roleUpdateSchema } from "@/lib/validators/menu";
 
@@ -18,8 +19,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireStaffPermission("roles.manage");
-
+    const staffContext = await requireStaffPermission("roles.manage");
     const { id } = parseParams(await context.params, idParamSchema);
     const body = await parseJsonBody(request, roleUpdateSchema);
     const db = getDb();
@@ -31,6 +31,10 @@ export async function PATCH(
       throw new ApiError(404, "NOT_FOUND", "Rol no encontrado");
     }
 
+    const nextName = body.name ?? current.name;
+    const nextPermissions =
+      body.permissions ?? (JSON.parse(current.permissions_json) as string[]);
+
     db.prepare(
       `
         update role
@@ -41,10 +45,20 @@ export async function PATCH(
       `,
     ).run({
       id,
-      name: body.name ?? current.name,
-      permissionsJson: JSON.stringify(
-        body.permissions ?? (JSON.parse(current.permissions_json) as string[]),
-      ),
+      name: nextName,
+      permissionsJson: JSON.stringify(nextPermissions),
+    });
+
+    writeAuditLog({
+      actorUserId: staffContext.user.id,
+      action: "role.updated",
+      targetType: "role",
+      targetId: id,
+      metadata: {
+        isSystem: Boolean(current.is_system),
+        name: nextName,
+        permissions: nextPermissions,
+      },
     });
 
     return NextResponse.json({ ok: true });
@@ -58,8 +72,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireStaffPermission("roles.manage");
-
+    const staffContext = await requireStaffPermission("roles.manage");
     const { id } = parseParams(await context.params, idParamSchema);
     const db = getDb();
     const current = db
@@ -85,6 +98,18 @@ export async function DELETE(
     }
 
     db.prepare("delete from role where id = @id").run({ id });
+
+    writeAuditLog({
+      actorUserId: staffContext.user.id,
+      action: "role.deleted",
+      targetType: "role",
+      targetId: id,
+      metadata: {
+        name: current.name,
+        permissions: JSON.parse(current.permissions_json) as string[],
+      },
+    });
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleRouteError(error);

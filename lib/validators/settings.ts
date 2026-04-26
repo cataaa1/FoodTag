@@ -11,6 +11,8 @@ const dataImageSchema = z
     "Usá una imagen JPG, PNG o WEBP",
   );
 
+const beepSoundSchema = z.enum(["classic", "soft", "marcado"]);
+
 export const adminSettingsPatchSchema = z.object({
   name: z.string().trim().min(2, "El nombre es obligatorio").max(80),
   address: z.string().trim().min(2, "La dirección es obligatoria").max(120),
@@ -22,4 +24,6 @@ export const adminSettingsPatchSchema = z.object({
   logoUrl: dataImageSchema.nullable(),
   heroImageUrl: dataImageSchema.nullable(),
   allowOrderModifications: z.boolean(),
+  beepSoundId: beepSoundSchema,
+  customerPickupCooldownSeconds: z.number().int().min(0).max(300),
 });

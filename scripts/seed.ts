@@ -21,7 +21,8 @@ function upsertRole(name: string, permissions: readonly string[]) {
       insert into role (id, name, is_system, permissions_json)
       values (@id, @name, 1, @permissionsJson)
       on conflict(name) do update set
-        is_system = excluded.is_system
+        is_system = excluded.is_system,
+        permissions_json = excluded.permissions_json
     `,
   ).run({
     id,

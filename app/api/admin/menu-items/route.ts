@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
-import { handleRouteError } from "@/lib/api/errors";
+import { ApiError, handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
+import { writeAuditLog } from "@/lib/data/audit-log";
 import { getDb } from "@/lib/db/client";
 import { menuItemCreateSchema } from "@/lib/validators/menu";
 
@@ -52,6 +53,11 @@ type VariantInput = {
   priceCents: number;
   available: boolean;
   position: number;
+};
+
+type CategoryLookupRow = {
+  id: string;
+  name: string;
 };
 
 function mapVariant(row: MenuVariantRow) {
@@ -179,11 +185,18 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await requireStaffPermission("menu.write");
+    const context = await requireStaffPermission("menu.write");
 
     const body = await parseJsonBody(request, menuItemCreateSchema);
     const db = getDb();
     const id = randomUUID();
+    const category = db
+      .prepare<{ id: string }, CategoryLookupRow>("select id, name from category where id = @id")
+      .get({ id: body.categoryId });
+
+    if (!category) {
+      throw new ApiError(400, "INVALID_INPUT", "La categoría elegida ya no existe");
+    }
 
     const transaction = db.transaction(() => {
       db.prepare(
@@ -233,6 +246,20 @@ export async function POST(request: Request) {
         "select * from menu_variant where menu_item_id = @id order by position asc",
       )
       .all({ id });
+
+    writeAuditLog({
+      actorUserId: context.user.id,
+      action: "menu.item.created",
+      targetType: "menu_item",
+      targetId: id,
+      metadata: {
+        available: body.available,
+        categoryName: category.name,
+        hasImage: Boolean(body.photoUrl),
+        hasVariants: body.hasVariants,
+        name: body.name,
+      },
+    });
 
     return NextResponse.json(
       { item: item ? mapItemWithOptions(item, modifiers, variants) : null },

@@ -17,6 +17,7 @@ export type TruckConfig = {
   mpAccessTokenEncrypted: string | null;
   tipDefaultsJson: number[];
   beepSoundId: string;
+  customerPickupCooldownSeconds: number;
   pausedManualAt: string | null;
   pausedReason: string | null;
 };
@@ -166,6 +167,7 @@ export type CustomerOrder = {
   pulseAt: string | null;
   readyAt: string | null;
   deliveredAt: string | null;
+  pickedUpAt: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
   refundPending: boolean;
@@ -184,11 +186,14 @@ export type TruckStatus = {
   address: string;
   heroImageUrl: string | null;
   publicTagline: string;
+  instagramHandle: string | null;
   brandIcon: string;
   logoUrl: string | null;
   primaryColor: string;
   todayHoursLabel: string;
   allowOrderModifications: boolean;
+  beepSoundId: string;
+  customerPickupCooldownSeconds: number;
 };
 
 export type MenuCategoryWithItems = Category & {

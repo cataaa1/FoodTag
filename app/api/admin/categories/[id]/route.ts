@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody, parseParams } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
+import { writeAuditLog } from "@/lib/data/audit-log";
 import { getDb } from "@/lib/db/client";
 import { categoryUpdateSchema, idParamSchema } from "@/lib/validators/menu";
 
@@ -30,7 +31,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireStaffPermission("menu.write");
+    const staffContext = await requireStaffPermission("menu.write");
 
     const params = parseParams(await context.params, idParamSchema);
     const body = await parseJsonBody(request, categoryUpdateSchema);
@@ -71,6 +72,17 @@ export async function PATCH(
     revalidatePath("/admin");
     revalidatePath("/admin/menu");
 
+    writeAuditLog({
+      actorUserId: staffContext.user.id,
+      action: "menu.category.updated",
+      targetType: "category",
+      targetId: params.id,
+      metadata: {
+        before: mapCategory(current),
+        after: category ? mapCategory(category) : null,
+      },
+    });
+
     return NextResponse.json({ category: category ? mapCategory(category) : null });
   } catch (error) {
     return handleRouteError(error);
@@ -82,14 +94,31 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireStaffPermission("menu.write");
+    const staffContext = await requireStaffPermission("menu.write");
 
     const params = parseParams(await context.params, idParamSchema);
-    getDb().prepare("delete from category where id = ?").run(params.id);
+    const db = getDb();
+    const current = db
+      .prepare<{ id: string }, CategoryRow>("select * from category where id = @id")
+      .get({ id: params.id });
+
+    if (!current) {
+      throw new ApiError(404, "NOT_FOUND", "Categoría no encontrada");
+    }
+
+    db.prepare("delete from category where id = ?").run(params.id);
 
     revalidatePath("/menu");
     revalidatePath("/admin");
     revalidatePath("/admin/menu");
+
+    writeAuditLog({
+      actorUserId: staffContext.user.id,
+      action: "menu.category.deleted",
+      targetType: "category",
+      targetId: params.id,
+      metadata: mapCategory(current),
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -67,8 +67,21 @@ function isLocalAppUrl(appUrl: string) {
   }
 }
 
+function isPublicHttpsUrl(appUrl: string) {
+  try {
+    return new URL(appUrl).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function getPreferenceReturnConfig(appUrl: string, callbackUrl: string) {
-  if (isLocalAppUrl(appUrl)) {
+  const isHttps = isPublicHttpsUrl(appUrl);
+
+  // Con HTTP (localhost, Tailscale, dev) MP no puede redirigir de vuelta ni recibir webhooks.
+  // Abrimos MP en nueva pestaña y llevamos al usuario directo al ticket — el payment-sync
+  // confirma el pago cuando vuelve a la pestaña del ticket.
+  if (!isHttps) {
     return { localCheckout: true };
   }
 
@@ -79,8 +92,8 @@ function getPreferenceReturnConfig(appUrl: string, callbackUrl: string) {
       pending: callbackUrl,
       failure: callbackUrl,
     },
-    notification_url: `${appUrl}/api/mercado-pago/webhook`,
     auto_return: "approved",
+    notification_url: `${appUrl}/api/mercado-pago/webhook`,
   };
 }
 

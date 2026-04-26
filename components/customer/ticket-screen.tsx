@@ -4,48 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { InstallPwaBanner } from "@/components/customer/install-pwa-banner";
 import { PhoneShell, PrimaryPhoneButton } from "@/components/customer/phone-shell";
 import type { CustomerOrder, MenuCategoryWithItems, TruckStatus } from "@/lib/types/domain";
+import { playBeeperSound } from "@/lib/utils/beeper";
+import { getContrastColor, hexToRgba, normalizeHexColor } from "@/lib/utils/color";
 import { fetchJson } from "@/lib/utils/http";
 
-function playBeeper() {
-  try {
-    const audio = new AudioContext();
-    const pattern = [
-      { start: 0, frequency: 880 },
-      { start: 0.18, frequency: 1320 },
-      { start: 0.42, frequency: 880 },
-      { start: 0.6, frequency: 1320 },
-      { start: 0.95, frequency: 1040 },
-      { start: 1.13, frequency: 1560 },
-      { start: 1.37, frequency: 1040 },
-      { start: 1.55, frequency: 1560 },
-    ];
-
-    pattern.forEach((beep) => {
-      const oscillator = audio.createOscillator();
-      const gain = audio.createGain();
-      const startAt = audio.currentTime + beep.start;
-      const endAt = startAt + 0.13;
-
-      oscillator.type = "square";
-      oscillator.frequency.setValueAtTime(beep.frequency, startAt);
-      gain.gain.setValueAtTime(0.001, startAt);
-      gain.gain.exponentialRampToValueAtTime(0.32, startAt + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, endAt);
-      oscillator.connect(gain);
-      gain.connect(audio.destination);
-      oscillator.start(startAt);
-      oscillator.stop(endAt);
-    });
-
-    window.setTimeout(() => void audio.close(), 2200);
-  } catch {
-    // Audio can be blocked until the first user gesture; the visual alert remains.
-  }
-}
-
-export function TicketScreen({ orderId }: { orderId: string }) {
+export function TicketScreen({ orderId, vapidPublicKey }: { orderId: string; vapidPublicKey: string | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -57,6 +23,7 @@ export function TicketScreen({ orderId }: { orderId: string }) {
   const [modificationError, setModificationError] = useState<string | null>(null);
   const lastSignalRef = useRef<string | null>(null);
   const reconciledPaymentRef = useRef<string | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const paymentReturnId =
     searchParams.get("payment_id") ?? searchParams.get("collection_id");
   const orderQuery = useQuery({
@@ -71,9 +38,13 @@ export function TicketScreen({ orderId }: { orderId: string }) {
   const truckStatusQuery = useQuery({
     queryKey: ["truck-status"],
     queryFn: () => fetchJson<TruckStatus>("/api/customer/truck-status"),
+    refetchInterval: 5_000,
+    refetchOnWindowFocus: true,
   });
   const order = orderQuery.data?.order ?? null;
   const menuItems = menuQuery.data?.categories.flatMap((category) => category.items) ?? [];
+  const accentColor = normalizeHexColor(truckStatusQuery.data?.primaryColor);
+  const accentTextColor = getContrastColor(accentColor);
   const activeExtraPaymentRequest = order?.modificationRequests.find(
     (request) => request.status === "extra_payment_pending",
   );
@@ -133,11 +104,57 @@ export function TicketScreen({ orderId }: { orderId: string }) {
       );
     },
   });
+  const pickupMutation = useMutation({
+    mutationFn: () =>
+      fetchJson<{ order: CustomerOrder }>(`/api/customer/order/${orderId}/pickup`, {
+        method: "POST",
+      }),
+    onSuccess: async () => {
+      setModificationError(null);
+      await queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] });
+      router.push("/menu");
+    },
+    onError: (error) => {
+      setModificationError(
+        error instanceof Error ? error.message : "No pudimos confirmar el retiro",
+      );
+    },
+  });
 
   useEffect(() => {
     const timer = window.setInterval(() => setElapsed((value) => value + 1), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(`foodtag-checkout-${orderId}`);
+      if (stored) setCheckoutUrl(stored);
+    } catch { /* ignorar */ }
+  }, [orderId]);
+
+  // Persist active ticket so the PWA resumes here after being closed/backgrounded.
+  // Saved on mount (orderId always known); cleared when order reaches a terminal state.
+  useEffect(() => {
+    try {
+      localStorage.setItem("foodtag-pending-order-id", orderId);
+    } catch { /* ignorar */ }
+    return () => {
+      // On unmount via normal navigation (e.g. "Hacer otro pedido") clear it too.
+      try { localStorage.removeItem("foodtag-pending-order-id"); } catch { /* ignorar */ }
+    };
+  }, [orderId]);
+
+  useEffect(() => {
+    if (!order) return;
+    const isTerminal =
+      order.status === "cancelled" ||
+      order.status === "delivered" ||
+      Boolean(order.pickedUpAt);
+    if (isTerminal) {
+      try { localStorage.removeItem("foodtag-pending-order-id"); } catch { /* ignorar */ }
+    }
+  }, [order]);
 
   useEffect(() => {
     if (!paymentReturnId || reconciledPaymentRef.current === paymentReturnId) return;
@@ -254,8 +271,8 @@ export function TicketScreen({ orderId }: { orderId: string }) {
 
     lastSignalRef.current = signal;
     navigator.vibrate?.([260, 90, 260, 90, 360]);
-    playBeeper();
-  }, [order]);
+    playBeeperSound(truckStatusQuery.data?.beepSoundId ?? "classic");
+  }, [order, truckStatusQuery.data?.beepSoundId]);
 
   if (orderQuery.isError) {
     return (
@@ -265,7 +282,15 @@ export function TicketScreen({ orderId }: { orderId: string }) {
           <p className="text-sm leading-6 text-[#6b4e35]">
             Puede que la sesión haya vencido o que el pedido no exista.
           </p>
-          <PrimaryPhoneButton onClick={() => router.push("/menu")} type="button">
+          <PrimaryPhoneButton
+            onClick={() => router.push("/menu")}
+            style={{
+              backgroundColor: accentColor,
+              color: accentTextColor,
+              boxShadow: `0 4px 16px ${hexToRgba(accentColor, 0.35)}`,
+            }}
+            type="button"
+          >
             Volver al menú
           </PrimaryPhoneButton>
         </div>
@@ -283,8 +308,31 @@ export function TicketScreen({ orderId }: { orderId: string }) {
             Si ya pagaste con Mercado Pago, esta pantalla se actualiza sola cuando
             llegue la confirmación.
           </p>
+          {checkoutUrl ? (
+            <PrimaryPhoneButton
+              onClick={() => {
+                sessionStorage.removeItem(`foodtag-checkout-${orderId}`);
+                try { localStorage.setItem("foodtag-pending-order-id", orderId); } catch { /* ignorar */ }
+                window.location.assign(checkoutUrl);
+              }}
+              style={{
+                backgroundColor: accentColor,
+                color: accentTextColor,
+                boxShadow: `0 4px 16px ${hexToRgba(accentColor, 0.35)}`,
+              }}
+              type="button"
+            >
+              Ir a pagar con Mercado Pago
+            </PrimaryPhoneButton>
+          ) : null}
           {paymentReturnId && !paymentReturnError ? (
-            <p className="rounded-full bg-[#fff1e6] px-4 py-2 text-xs font-black text-[#f97316]">
+            <p
+              className="rounded-full px-4 py-2 text-xs font-black"
+              style={{
+                backgroundColor: hexToRgba(accentColor, 0.14),
+                color: accentColor,
+              }}
+            >
               Confirmando pago...
             </p>
           ) : null}
@@ -298,7 +346,6 @@ export function TicketScreen({ orderId }: { orderId: string }) {
               {paymentSyncError}
             </p>
           ) : null}
-      
         </div>
       </PhoneShell>
     );
@@ -313,7 +360,15 @@ export function TicketScreen({ orderId }: { orderId: string }) {
           <p className="text-sm leading-6 text-[#6b4e35]">
             No pudimos confirmar el pago. Podés volver al menú y crear el pedido de nuevo.
           </p>
-          <PrimaryPhoneButton onClick={() => router.push("/menu")} type="button">
+          <PrimaryPhoneButton
+            onClick={() => router.push("/menu")}
+            style={{
+              backgroundColor: accentColor,
+              color: accentTextColor,
+              boxShadow: `0 4px 16px ${hexToRgba(accentColor, 0.35)}`,
+            }}
+            type="button"
+          >
             Volver al menú
           </PrimaryPhoneButton>
         </div>
@@ -321,8 +376,16 @@ export function TicketScreen({ orderId }: { orderId: string }) {
     );
   }
 
-  if (order?.status === "ready") {
-    return <ReadyTicket order={order} onDone={() => router.push("/menu")} />;
+  if (order?.status === "ready" && !order.pickedUpAt) {
+    return (
+      <ReadyTicket
+        accentColor={accentColor}
+        accentTextColor={accentTextColor}
+        isSubmitting={pickupMutation.isPending}
+        onDone={() => pickupMutation.mutate()}
+        order={order}
+      />
+    );
   }
 
   if (order?.status === "cancelled") {
@@ -334,7 +397,15 @@ export function TicketScreen({ orderId }: { orderId: string }) {
           <p className="text-sm leading-6 text-[#6b4e35]">
             {order.cancelReason ?? "El staff canceló este pedido."}
           </p>
-          <PrimaryPhoneButton onClick={() => router.push("/menu")} type="button">
+          <PrimaryPhoneButton
+            onClick={() => router.push("/menu")}
+            style={{
+              backgroundColor: accentColor,
+              color: accentTextColor,
+              boxShadow: `0 4px 16px ${hexToRgba(accentColor, 0.35)}`,
+            }}
+            type="button"
+          >
             Volver al menú
           </PrimaryPhoneButton>
         </div>
@@ -342,7 +413,7 @@ export function TicketScreen({ orderId }: { orderId: string }) {
     );
   }
 
-  if (order?.status === "delivered") {
+  if (order?.pickedUpAt || order?.status === "delivered") {
     return (
       <PhoneShell>
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
@@ -351,7 +422,15 @@ export function TicketScreen({ orderId }: { orderId: string }) {
           <p className="text-sm leading-6 text-[#6b4e35]">
             Gracias por pedir en FoodTag.
           </p>
-          <PrimaryPhoneButton onClick={() => router.push("/menu")} type="button">
+          <PrimaryPhoneButton
+            onClick={() => router.push("/menu")}
+            style={{
+              backgroundColor: accentColor,
+              color: accentTextColor,
+              boxShadow: `0 4px 16px ${hexToRgba(accentColor, 0.35)}`,
+            }}
+            type="button"
+          >
             Hacer otro pedido
           </PrimaryPhoneButton>
         </div>
@@ -378,7 +457,7 @@ export function TicketScreen({ orderId }: { orderId: string }) {
           #{String(ticketNumber).padStart(3, "0")}
         </h1>
         <p className="mb-8 text-sm font-medium text-[#9a7560]">
-          Tiempo estimado: <strong className="text-[#f97316]">~ 10 min</strong>
+          Tiempo estimado: <strong style={{ color: accentColor }}>~ 10 min</strong>
         </p>
 
         <div className="mb-8 flex w-full max-w-[300px]">
@@ -386,18 +465,23 @@ export function TicketScreen({ orderId }: { orderId: string }) {
             <div className="relative flex flex-1 flex-col items-center" key={step.label}>
               {index < steps.length - 1 ? (
                 <div
-                  className={
-                    step.done
-                      ? "absolute left-1/2 top-[17px] z-0 h-0.5 w-full bg-[#f97316]"
-                      : "absolute left-1/2 top-[17px] z-0 h-0.5 w-full bg-[#f0ddd0]"
-                  }
+                  className="absolute left-1/2 top-[17px] z-0 h-0.5 w-full bg-[#f0ddd0]"
+                  style={step.done ? { backgroundColor: accentColor } : undefined}
                 />
               ) : null}
               <div
                 className={
                   step.done
-                    ? "z-10 mb-1.5 flex size-[34px] items-center justify-center rounded-full bg-[#f97316] text-base shadow-[0_0_0_4px_rgba(249,115,22,0.18)]"
+                    ? "z-10 mb-1.5 flex size-[34px] items-center justify-center rounded-full text-base"
                     : "z-10 mb-1.5 flex size-[34px] items-center justify-center rounded-full bg-[#f0ddd0] text-base"
+                }
+                style={
+                  step.done
+                    ? {
+                        backgroundColor: accentColor,
+                        boxShadow: `0 0 0 4px ${hexToRgba(accentColor, 0.18)}`,
+                      }
+                    : undefined
                 }
               >
                 {step.icon}
@@ -405,9 +489,10 @@ export function TicketScreen({ orderId }: { orderId: string }) {
               <p
                 className={
                   step.done
-                    ? "text-center text-[10px] font-bold text-[#f97316]"
+                    ? "text-center text-[10px] font-bold"
                     : "text-center text-[10px] font-medium text-[#9a7560]"
                 }
+                style={step.done ? { color: accentColor } : undefined}
               >
                 {step.label}
               </p>
@@ -415,7 +500,10 @@ export function TicketScreen({ orderId }: { orderId: string }) {
           ))}
         </div>
 
-        <div className="mb-4 w-full rounded-[14px] bg-[#fff1e6] px-[18px] py-3.5 text-center">
+        <div
+          className="mb-4 w-full rounded-[14px] px-[18px] py-3.5 text-center"
+          style={{ backgroundColor: hexToRgba(accentColor, 0.12) }}
+        >
           <p className="text-[13px] leading-6 text-[#6b4e35]">
             🔒 <strong>No cierres esta pantalla.</strong>
             <br />
@@ -428,7 +516,7 @@ export function TicketScreen({ orderId }: { orderId: string }) {
             Modificar productos
           </p>
           <p className="mb-3 text-xs leading-5 text-[#9a7560]">
-            
+            PodÃ©s ajustar opciones mientras el pedido siga pendiente y el truck lo tenga habilitado.
           </p>
           {order?.modificationRequests.length ? (
             <div className="mb-3 space-y-2">
@@ -454,7 +542,13 @@ export function TicketScreen({ orderId }: { orderId: string }) {
             </div>
           ) : null}
           {activeExtraPaymentRequest ? (
-            <p className="mb-3 rounded-[12px] bg-[#fff1e6] px-3 py-2 text-xs font-black text-[#f97316]">
+            <p
+              className="mb-3 rounded-[12px] px-3 py-2 text-xs font-black"
+              style={{
+                backgroundColor: hexToRgba(accentColor, 0.12),
+                color: accentColor,
+              }}
+            >
               Tu solicitud requiere pasar por caja. Acercate al cajero para continuar.
             </p>
           ) : null}
@@ -491,8 +585,12 @@ export function TicketScreen({ orderId }: { orderId: string }) {
                         </p>
                       </div>
                       <button
-                        className="rounded-full bg-[#f97316] px-3 py-2 text-xs font-black text-white"
+                        className="rounded-full px-3 py-2 text-xs font-black"
                         onClick={() => setOpenCustomizeItemId(isOpen ? null : item.id)}
+                        style={{
+                          backgroundColor: accentColor,
+                          color: accentTextColor,
+                        }}
                         type="button"
                       >
                         Customizar
@@ -505,11 +603,19 @@ export function TicketScreen({ orderId }: { orderId: string }) {
                             <button
                               className={
                                 currentLabels.includes(modifier.label)
-                                  ? "flex items-center justify-between rounded-[12px] border-2 border-[#f97316] bg-[#fff1e6] px-3 py-2 text-left text-sm font-black text-[#2b1b12]"
+                                  ? "flex items-center justify-between rounded-[12px] border-2 px-3 py-2 text-left text-sm font-black text-[#2b1b12]"
                                   : "flex items-center justify-between rounded-[12px] border border-[#e8d4c4] bg-white px-3 py-2 text-left text-sm font-black text-[#2b1b12]"
                               }
                               key={modifier.id}
                               onClick={() => toggleModifier(item, modifier.label)}
+                              style={
+                                currentLabels.includes(modifier.label)
+                                  ? {
+                                      backgroundColor: hexToRgba(accentColor, 0.12),
+                                      borderColor: accentColor,
+                                    }
+                                  : undefined
+                              }
                               type="button"
                             >
                               <span>{modifier.label}</span>
@@ -535,12 +641,16 @@ export function TicketScreen({ orderId }: { orderId: string }) {
           ) : null}
           {canRequestModifications ? (
             <button
-              className="mt-3 w-full rounded-[14px] bg-[#2b1b12] px-4 py-3 text-sm font-black text-white disabled:opacity-40"
+              className="mt-3 w-full rounded-[14px] px-4 py-3 text-sm font-black disabled:opacity-40"
               disabled={
                 modificationMutation.isPending ||
                 Object.keys(selectedModifiers).length === 0
               }
               onClick={() => modificationMutation.mutate()}
+              style={{
+                backgroundColor: accentColor,
+                color: accentTextColor,
+              }}
               type="button"
             >
               {modificationMutation.isPending ? "Enviando..." : "Enviar cambios de opciones"}
@@ -552,14 +662,27 @@ export function TicketScreen({ orderId }: { orderId: string }) {
           Actualizando cada 5 segundos · {elapsed}s
         </p>
       </div>
+      {vapidPublicKey ? (
+        <InstallPwaBanner
+          accentColor={accentColor}
+          orderId={orderId}
+          vapidPublicKey={vapidPublicKey}
+        />
+      ) : null}
     </PhoneShell>
   );
 }
 
 function ReadyTicket({
+  accentColor,
+  accentTextColor,
+  isSubmitting,
   onDone,
   order,
 }: {
+  accentColor: string;
+  accentTextColor: string;
+  isSubmitting: boolean;
   onDone: () => void;
   order: CustomerOrder;
 }) {
@@ -570,7 +693,12 @@ function ReadyTicket({
     return () => window.clearInterval(timer);
   }, []);
 
-  const colors = ["#ff6b00", "#ff8c00", "#ffa500", "#ff6b00"];
+  const colors = [
+    accentColor,
+    hexToRgba(accentColor, 0.92),
+    accentColor,
+    hexToRgba(accentColor, 0.86),
+  ];
 
   return (
     <main className="min-h-dvh">
@@ -600,11 +728,16 @@ function ReadyTicket({
           ))}
         </div>
         <button
-          className="mt-4 rounded-2xl border-2 border-white/40 bg-white/25 px-10 py-4 text-[17px] font-black tracking-[-0.2px] text-white shadow-[0_4px_20px_rgba(0,0,0,0.20)] backdrop-blur"
+          className="mt-4 rounded-2xl border-2 border-white/40 bg-white/25 px-10 py-4 text-[17px] font-black tracking-[-0.2px] text-white shadow-[0_4px_20px_rgba(0,0,0,0.20)] backdrop-blur disabled:opacity-60"
+          disabled={isSubmitting}
           onClick={onDone}
+          style={{
+            backgroundColor: hexToRgba(accentTextColor, 0.18),
+            color: accentTextColor,
+          }}
           type="button"
         >
-          Ya lo retiré ✓
+          {isSubmitting ? "Confirmando..." : "Ya lo retiré ✓"}
         </button>
       </section>
     </main>
