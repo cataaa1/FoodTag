@@ -24,7 +24,7 @@ export async function POST(
     );
     await parseJsonBody(request, approveModificationRequestSchema);
 
-    const modificationRequest = approveModificationRequest({
+    const modificationRequest = await approveModificationRequest({
       orderId: id,
       requestId,
       staffUserId: context.user.id,
@@ -32,7 +32,7 @@ export async function POST(
 
     return NextResponse.json({
       modificationRequest,
-      order: getStaffOrderById(id),
+      order: await getStaffOrderById(id),
     });
   } catch (error) {
     return handleRouteError(error);

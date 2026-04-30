@@ -29,21 +29,19 @@ export async function GET(request: Request) {
     await requireStaffPermission("menu.read");
 
     const url = new URL(request.url);
-    const query = menuQuerySchema.parse(
-      Object.fromEntries(url.searchParams.entries()),
-    );
+    const query = menuQuerySchema.parse(Object.fromEntries(url.searchParams.entries()));
     const db = getDb();
-    const variants = query.menuItemId
-      ? db
-          .prepare<{ menuItemId: string }, VariantRow>(
-            "select * from menu_variant where menu_item_id = @menuItemId order by position asc",
-          )
-          .all({ menuItemId: query.menuItemId })
-      : db
-          .prepare<[], VariantRow>("select * from menu_variant order by position asc")
-          .all();
 
-    return NextResponse.json({ variants: variants.map(mapVariant) });
+    const result = query.menuItemId
+      ? await db.execute({
+          sql: "select * from menu_variant where menu_item_id = ? order by position asc",
+          args: [query.menuItemId],
+        })
+      : await db.execute("select * from menu_variant order by position asc");
+
+    return NextResponse.json({
+      variants: (result.rows as unknown as VariantRow[]).map(mapVariant),
+    });
   } catch (error) {
     return handleRouteError(error);
   }
@@ -57,25 +55,21 @@ export async function POST(request: Request) {
     const db = getDb();
     const id = randomUUID();
 
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         insert into menu_variant (
           id, menu_item_id, name, price_cents, available, position
         )
-        values (@id, @menuItemId, @name, @priceCents, @available, @position)
+        values (?, ?, ?, ?, ?, ?)
       `,
-    ).run({
-      id,
-      menuItemId: body.menuItemId,
-      name: body.name,
-      priceCents: body.priceCents,
-      available: body.available ? 1 : 0,
-      position: body.position,
+      args: [id, body.menuItemId, body.name, body.priceCents, body.available ? 1 : 0, body.position],
     });
 
-    const variant = db
-      .prepare<{ id: string }, VariantRow>("select * from menu_variant where id = @id")
-      .get({ id });
+    const variantResult = await db.execute({
+      sql: "select * from menu_variant where id = ?",
+      args: [id],
+    });
+    const variant = variantResult.rows[0] as unknown as VariantRow | undefined;
 
     revalidatePath("/menu");
     revalidatePath("/admin");

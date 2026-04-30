@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const session = await requireCustomerSession();
     const { ticketId } = await parseJsonBody(request, issueSchema);
 
-    const order = getCustomerOrderById(session.customerId, ticketId);
+    const order = await getCustomerOrderById(session.customerId, ticketId);
 
     if (!order) {
       throw new ApiError(404, "NOT_FOUND", "No encontramos ese ticket");

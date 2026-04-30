@@ -61,32 +61,15 @@ type CategoryLookupRow = {
 };
 
 function mapVariant(row: MenuVariantRow) {
-  return {
-    id: row.id,
-    menu_item_id: row.menu_item_id,
-    name: row.name,
-    price_cents: row.price_cents,
-    available: Boolean(row.available),
-    position: row.position,
-  };
+  return { ...row, available: Boolean(row.available) };
 }
 
 function mapModifier(row: MenuModifierRow) {
-  return {
-    id: row.id,
-    menu_item_id: row.menu_item_id,
-    label: row.label,
-    default_checked: Boolean(row.default_checked),
-    position: row.position,
-  };
+  return { ...row, default_checked: Boolean(row.default_checked) };
 }
 
 function mapItem(row: MenuItemRow) {
-  return {
-    ...row,
-    available: Boolean(row.available),
-    has_variants: Boolean(row.has_variants),
-  };
+  return { ...row, available: Boolean(row.available), has_variants: Boolean(row.has_variants) };
 }
 
 function mapItemWithOptions(
@@ -96,66 +79,52 @@ function mapItemWithOptions(
 ) {
   return {
     ...mapItem(row),
-    variants: variants.filter((variant) => variant.menu_item_id === row.id).map(mapVariant),
-    modifiers: modifiers
-      .filter((modifier) => modifier.menu_item_id === row.id)
-      .map(mapModifier),
+    variants: variants.filter((v) => v.menu_item_id === row.id).map(mapVariant),
+    modifiers: modifiers.filter((m) => m.menu_item_id === row.id).map(mapModifier),
   };
 }
 
-function replaceVariants(menuItemId: string, variants: VariantInput[]) {
+async function replaceVariants(menuItemId: string, variants: VariantInput[]) {
   const db = getDb();
-
-  db.prepare("delete from menu_variant where menu_item_id = @menuItemId").run({
-    menuItemId,
-  });
-
-  const insert = db.prepare(
-    `
-      insert into menu_variant (
-        id, menu_item_id, name, price_cents, available, position
-      )
-      values (@id, @menuItemId, @name, @priceCents, @available, @position)
-    `,
-  );
-
-  variants.forEach((variant, index) => {
-    insert.run({
-      id: variant.id ?? randomUUID(),
-      menuItemId,
-      name: variant.name,
-      priceCents: variant.priceCents,
-      available: variant.available ? 1 : 0,
-      position: variant.position ?? index,
-    });
-  });
+  const statements = [
+    { sql: "delete from menu_variant where menu_item_id = ?", args: [menuItemId] },
+    ...variants.map((variant, index) => ({
+      sql: `
+        insert into menu_variant (id, menu_item_id, name, price_cents, available, position)
+        values (?, ?, ?, ?, ?, ?)
+      `,
+      args: [
+        variant.id ?? randomUUID(),
+        menuItemId,
+        variant.name,
+        variant.priceCents,
+        variant.available ? 1 : 0,
+        variant.position ?? index,
+      ],
+    })),
+  ];
+  await db.batch(statements, "write");
 }
 
-function replaceModifiers(menuItemId: string, modifiers: ModifierInput[]) {
+async function replaceModifiers(menuItemId: string, modifiers: ModifierInput[]) {
   const db = getDb();
-
-  db.prepare("delete from menu_item_modifier where menu_item_id = @menuItemId").run({
-    menuItemId,
-  });
-
-  const insert = db.prepare(
-    `
-      insert into menu_item_modifier (
-        id, menu_item_id, label, default_checked, position
-      )
-      values (@id, @menuItemId, @label, @defaultChecked, @position)
-    `,
-  );
-
-  modifiers.forEach((modifier, index) => {
-    insert.run({
-      id: modifier.id ?? randomUUID(),
-      menuItemId,
-      label: modifier.label,
-      defaultChecked: modifier.defaultChecked ? 1 : 0,
-      position: modifier.position ?? index,
-    });
-  });
+  const statements = [
+    { sql: "delete from menu_item_modifier where menu_item_id = ?", args: [menuItemId] },
+    ...modifiers.map((modifier, index) => ({
+      sql: `
+        insert into menu_item_modifier (id, menu_item_id, label, default_checked, position)
+        values (?, ?, ?, ?, ?)
+      `,
+      args: [
+        modifier.id ?? randomUUID(),
+        menuItemId,
+        modifier.label,
+        modifier.defaultChecked ? 1 : 0,
+        modifier.position ?? index,
+      ],
+    })),
+  ];
+  await db.batch(statements, "write");
 }
 
 export async function GET() {
@@ -163,17 +132,15 @@ export async function GET() {
     await requireStaffPermission("menu.read");
 
     const db = getDb();
-    const items = db
-      .prepare<[], MenuItemRow>("select * from menu_item order by position asc")
-      .all();
-    const modifiers = db
-      .prepare<[], MenuModifierRow>(
-        "select * from menu_item_modifier order by position asc",
-      )
-      .all();
-    const variants = db
-      .prepare<[], MenuVariantRow>("select * from menu_variant order by position asc")
-      .all();
+    const [itemResult, modResult, varResult] = await Promise.all([
+      db.execute("select * from menu_item order by position asc"),
+      db.execute("select * from menu_item_modifier order by position asc"),
+      db.execute("select * from menu_variant order by position asc"),
+    ]);
+
+    const items = itemResult.rows as unknown as MenuItemRow[];
+    const modifiers = modResult.rows as unknown as MenuModifierRow[];
+    const variants = varResult.rows as unknown as MenuVariantRow[];
 
     return NextResponse.json({
       items: items.map((item) => mapItemWithOptions(item, modifiers, variants)),
@@ -190,64 +157,56 @@ export async function POST(request: Request) {
     const body = await parseJsonBody(request, menuItemCreateSchema);
     const db = getDb();
     const id = randomUUID();
-    const category = db
-      .prepare<{ id: string }, CategoryLookupRow>("select id, name from category where id = @id")
-      .get({ id: body.categoryId });
+
+    const categoryResult = await db.execute({
+      sql: "select id, name from category where id = ?",
+      args: [body.categoryId],
+    });
+    const category = categoryResult.rows[0] as unknown as CategoryLookupRow | undefined;
 
     if (!category) {
       throw new ApiError(400, "INVALID_INPUT", "La categoría elegida ya no existe");
     }
 
-    const transaction = db.transaction(() => {
-      db.prepare(
-        `
-          insert into menu_item (
-            id, category_id, name, description, price_cents, photo_url,
-            available, has_variants, position
-          )
-          values (
-            @id, @categoryId, @name, @description, @priceCents, @photoUrl,
-            @available, @hasVariants, @position
-          )
-        `,
-      ).run({
+    await db.execute({
+      sql: `
+        insert into menu_item (
+          id, category_id, name, description, price_cents, photo_url,
+          available, has_variants, position
+        )
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      args: [
         id,
-        categoryId: body.categoryId,
-        name: body.name,
-        description: body.description,
-        priceCents: body.priceCents,
-        photoUrl: body.photoUrl,
-        available: body.available ? 1 : 0,
-        hasVariants: body.hasVariants ? 1 : 0,
-        position: body.position,
-      });
-
-      replaceModifiers(id, body.modifiers);
-      replaceVariants(id, body.hasVariants ? body.variants : []);
+        body.categoryId,
+        body.name,
+        body.description,
+        body.priceCents,
+        body.photoUrl,
+        body.available ? 1 : 0,
+        body.hasVariants ? 1 : 0,
+        body.position,
+      ],
     });
 
-    transaction();
+    await replaceModifiers(id, body.modifiers);
+    await replaceVariants(id, body.hasVariants ? body.variants : []);
 
-    const item = db
-      .prepare<{ id: string }, MenuItemRow>("select * from menu_item where id = @id")
-      .get({ id });
+    const [itemResult, modResult, varResult] = await Promise.all([
+      db.execute({ sql: "select * from menu_item where id = ?", args: [id] }),
+      db.execute({ sql: "select * from menu_item_modifier where menu_item_id = ? order by position asc", args: [id] }),
+      db.execute({ sql: "select * from menu_variant where menu_item_id = ? order by position asc", args: [id] }),
+    ]);
+
+    const item = itemResult.rows[0] as unknown as MenuItemRow | undefined;
+    const modifiers = modResult.rows as unknown as MenuModifierRow[];
+    const variants = varResult.rows as unknown as MenuVariantRow[];
 
     revalidatePath("/menu");
     revalidatePath("/admin");
     revalidatePath("/admin/menu");
 
-    const modifiers = db
-      .prepare<{ id: string }, MenuModifierRow>(
-        "select * from menu_item_modifier where menu_item_id = @id order by position asc",
-      )
-      .all({ id });
-    const variants = db
-      .prepare<{ id: string }, MenuVariantRow>(
-        "select * from menu_variant where menu_item_id = @id order by position asc",
-      )
-      .all({ id });
-
-    writeAuditLog({
+    await writeAuditLog({
       actorUserId: context.user.id,
       action: "menu.item.created",
       targetType: "menu_item",

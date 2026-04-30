@@ -17,7 +17,7 @@ export async function POST(
   try {
     const session = await requireCustomerSession();
     const { id } = parseParams(await params, customerOrderIdParamSchema);
-    const order = getCustomerOrderById(session.customerId, id);
+    const order = await getCustomerOrderById(session.customerId, id);
 
     if (!order) {
       throw new ApiError(404, "NOT_FOUND", "No encontramos ese ticket");
@@ -37,7 +37,7 @@ export async function POST(
       throw new ApiError(409, "CONFLICT", "El pago no corresponde a este pedido");
     }
 
-    const updatedOrder = markOrderPaymentFromMercadoPago({
+    const updatedOrder = await markOrderPaymentFromMercadoPago({
       orderId: id,
       paymentId: payment.id,
       paymentStatus: payment.status,

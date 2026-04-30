@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   try {
     const session = await requireCustomerSession();
     const body = await parseJsonBody(request, createOrderSchema);
-    const customer = getCustomerById(session.customerId);
+    const customer = await getCustomerById(session.customerId);
 
     if (!customer) {
       return NextResponse.json(
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     }
 
     const preference = await createMercadoPagoPreference({ customer, order });
-    attachMercadoPagoPreference(order.id, preference.id);
+    await attachMercadoPagoPreference(order.id, preference.id);
 
     return NextResponse.json({
       checkoutUrl: preference.initPoint,

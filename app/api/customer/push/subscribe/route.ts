@@ -1,7 +1,8 @@
-import { z } from "zod";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
-import { handleRouteError } from "@/lib/api/errors";
+import { ApiError, handleRouteError } from "@/lib/api/errors";
+import { parseJsonBody } from "@/lib/api/route";
 import { requireCustomerSession } from "@/lib/auth/customer-jwt";
 import { getCustomerOrderById } from "@/lib/data/orders";
 import { savePushSubscription } from "@/lib/push/subscriptions";
@@ -18,33 +19,21 @@ const bodySchema = z.object({
 export async function POST(request: Request) {
   try {
     const session = await requireCustomerSession();
+    const { orderId, endpoint, p256dh, auth, userAgent, platform } = await parseJsonBody(
+      request,
+      bodySchema,
+    );
 
-    const parsed = bodySchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: { code: "INVALID_INPUT", message: parsed.error.message } },
-        { status: 400 },
-      );
-    }
-
-    const { orderId, endpoint, p256dh, auth, userAgent, platform } = parsed.data;
-
-    const order = getCustomerOrderById(session.customerId, orderId);
+    const order = await getCustomerOrderById(session.customerId, orderId);
     if (!order) {
-      return NextResponse.json(
-        { error: { code: "NOT_FOUND", message: "No encontramos ese pedido" } },
-        { status: 404 },
-      );
+      throw new ApiError(404, "NOT_FOUND", "No encontramos ese pedido");
     }
 
     if (order.status === "delivered" || order.status === "cancelled") {
-      return NextResponse.json(
-        { error: { code: "CONFLICT", message: "El pedido ya está cerrado" } },
-        { status: 409 },
-      );
+      throw new ApiError(409, "CONFLICT", "El pedido ya está cerrado");
     }
 
-    savePushSubscription({ orderId, endpoint, p256dh, auth, userAgent, platform });
+    await savePushSubscription({ orderId, endpoint, p256dh, auth, userAgent, platform });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 
 import { handleRouteError } from "@/lib/api/errors";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const context = await requireStaffPermission("orders.read");
     return NextResponse.json({
-      orders: getStaffOrders(),
+      orders: await getStaffOrders(),
       permissions: context.role.permissionsJson,
     });
   } catch (error) {

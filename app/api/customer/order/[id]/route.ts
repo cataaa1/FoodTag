@@ -13,7 +13,7 @@ export async function GET(
   try {
     const session = await requireCustomerSession();
     const { id } = parseParams(await params, customerOrderIdParamSchema);
-    const order = getCustomerOrderById(session.customerId, id);
+    const order = await getCustomerOrderById(session.customerId, id);
 
     if (!order) {
       throw new ApiError(404, "NOT_FOUND", "No encontramos ese ticket");

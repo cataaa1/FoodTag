@@ -18,20 +18,15 @@ export type PushPayload = {
   orderId: string;
 };
 
-function logBeeperEvent(
+async function logBeeperEvent(
   orderId: string,
   kind: "push_sent" | "push_failed",
   metadata?: Record<string, unknown>,
 ) {
   try {
-    const db = getDb();
-    db.prepare<{ id: string; order_id: string; kind: string; metadata_json: string | null }>(
-      "insert into beeper_event (id, order_id, kind, metadata_json) values (@id, @order_id, @kind, @metadata_json)",
-    ).run({
-      id: randomUUID(),
-      order_id: orderId,
-      kind,
-      metadata_json: metadata ? JSON.stringify(metadata) : null,
+    await getDb().execute({
+      sql: "insert into beeper_event (id, order_id, kind, metadata_json) values (?, ?, ?, ?)",
+      args: [randomUUID(), orderId, kind, metadata ? JSON.stringify(metadata) : null],
     });
   } catch {
     // fire-and-forget, never throw
@@ -43,7 +38,7 @@ export async function sendPushToOrder(orderId: string, payload: PushPayload): Pr
 
   initVapid();
 
-  const subscriptions = getPushSubscriptionsForOrder(orderId);
+  const subscriptions = await getPushSubscriptionsForOrder(orderId);
   if (subscriptions.length === 0) return;
 
   await Promise.allSettled(
@@ -54,14 +49,14 @@ export async function sendPushToOrder(orderId: string, payload: PushPayload): Pr
           JSON.stringify(payload),
           { TTL: 60 },
         );
-        markPushSubscriptionUsed(sub.endpoint);
-        logBeeperEvent(orderId, "push_sent", { endpoint: sub.endpoint, type: payload.type });
+        void markPushSubscriptionUsed(sub.endpoint);
+        void logBeeperEvent(orderId, "push_sent", { endpoint: sub.endpoint, type: payload.type });
       } catch (err: unknown) {
         const status = (err as { statusCode?: number }).statusCode;
         if (status === 404 || status === 410) {
-          markPushSubscriptionFailed(sub.endpoint);
+          void markPushSubscriptionFailed(sub.endpoint);
         }
-        logBeeperEvent(orderId, "push_failed", {
+        void logBeeperEvent(orderId, "push_failed", {
           endpoint: sub.endpoint,
           status,
           type: payload.type,

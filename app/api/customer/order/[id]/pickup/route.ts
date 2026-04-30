@@ -13,7 +13,7 @@ export async function POST(
   try {
     const session = await requireCustomerSession();
     const { id } = parseParams(await params, customerOrderIdParamSchema);
-    const order = confirmCustomerOrderPickup(session.customerId, id);
+    const order = await confirmCustomerOrderPickup(session.customerId, id);
 
     return NextResponse.json({ order });
   } catch (error) {

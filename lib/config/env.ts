@@ -6,7 +6,8 @@ const clientEnvSchema = z.object({
 });
 
 const serverEnvSchema = clientEnvSchema.extend({
-  SQLITE_DB_PATH: z.string().min(1).default("./data/foodtag.sqlite"),
+  TURSO_DATABASE_URL: z.string().min(1),
+  TURSO_AUTH_TOKEN: z.string().min(1),
   CUSTOMER_JWT_SECRET: z.string().min(32),
   STAFF_SESSION_SECRET: z.string().min(32),
   MERCADO_PAGO_ACCESS_TOKEN: z.string().min(1).optional(),
@@ -45,7 +46,8 @@ export function getServerEnv(): ServerEnv {
 
   cachedServerEnv = serverEnvSchema.parse({
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-    SQLITE_DB_PATH: process.env.SQLITE_DB_PATH,
+    TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL,
+    TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
     CUSTOMER_JWT_SECRET: process.env.CUSTOMER_JWT_SECRET,
     STAFF_SESSION_SECRET: process.env.STAFF_SESSION_SECRET,
     MERCADO_PAGO_ACCESS_TOKEN: process.env.MERCADO_PAGO_ACCESS_TOKEN || undefined,

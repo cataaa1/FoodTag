@@ -6,7 +6,7 @@ import {
   verifyStaffSessionToken,
 } from "@/lib/auth/staff-token";
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const isLoginRoute = request.nextUrl.pathname === "/staff/login";
   const token = request.cookies.get(STAFF_SESSION_COOKIE)?.value;
 

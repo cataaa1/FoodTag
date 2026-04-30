@@ -20,7 +20,7 @@ export async function POST(
       await params,
       modificationRequestIdParamSchema,
     );
-    const order = getCustomerOrderById(session.customerId, id);
+    const order = await getCustomerOrderById(session.customerId, id);
 
     if (!order) {
       throw new ApiError(404, "NOT_FOUND", "No encontramos ese ticket");
@@ -53,14 +53,14 @@ export async function POST(
       throw new ApiError(409, "CONFLICT", "El pago no corresponde a esta modificacion");
     }
 
-    markModificationPaymentFromMercadoPago({
+    await markModificationPaymentFromMercadoPago({
       requestId,
       paymentId: payment.id,
       paymentStatus: payment.status,
     });
 
     return NextResponse.json({
-      order: getCustomerOrderById(session.customerId, id),
+      order: await getCustomerOrderById(session.customerId, id),
     });
   } catch (error) {
     return handleRouteError(error);

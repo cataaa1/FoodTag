@@ -90,22 +90,17 @@ export function mapMenuItem(
 
 export async function getMenuData() {
   const db = getDb();
-  const categories = db
-    .prepare<[], CategoryRow>(
-      "select * from category where visible = 1 order by position asc",
-    )
-    .all();
-  const items = db
-    .prepare<[], MenuItemRow>("select * from menu_item order by position asc")
-    .all();
-  const variants = db
-    .prepare<[], MenuVariantRow>("select * from menu_variant order by position asc")
-    .all();
-  const modifiers = db
-    .prepare<[], MenuModifierRow>(
-      "select * from menu_item_modifier order by position asc",
-    )
-    .all();
+  const [catResult, itemResult, varResult, modResult] = await Promise.all([
+    db.execute("select * from category where visible = 1 order by position asc"),
+    db.execute("select * from menu_item order by position asc"),
+    db.execute("select * from menu_variant order by position asc"),
+    db.execute("select * from menu_item_modifier order by position asc"),
+  ]);
+
+  const categories = catResult.rows as unknown as CategoryRow[];
+  const items = itemResult.rows as unknown as MenuItemRow[];
+  const variants = varResult.rows as unknown as MenuVariantRow[];
+  const modifiers = modResult.rows as unknown as MenuModifierRow[];
 
   return categories.map((category) => {
     const categoryItems = items

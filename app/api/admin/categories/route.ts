@@ -31,10 +31,10 @@ export async function GET() {
   try {
     await requireStaffPermission("menu.read");
 
-    const categories = getDb()
-      .prepare<[], CategoryRow>("select * from category order by position asc")
-      .all()
-      .map(mapCategory);
+    const result = await getDb().execute(
+      "select * from category order by position asc",
+    );
+    const categories = (result.rows as unknown as CategoryRow[]).map(mapCategory);
 
     return NextResponse.json({ categories });
   } catch (error) {
@@ -50,27 +50,25 @@ export async function POST(request: Request) {
     const db = getDb();
     const id = randomUUID();
 
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         insert into category (id, name, position, visible)
-        values (@id, @name, @position, @visible)
+        values (?, ?, ?, ?)
       `,
-    ).run({
-      id,
-      name: body.name,
-      position: body.position,
-      visible: body.visible ? 1 : 0,
+      args: [id, body.name, body.position, body.visible ? 1 : 0],
     });
 
-    const category = db
-      .prepare<{ id: string }, CategoryRow>("select * from category where id = @id")
-      .get({ id });
+    const categoryResult = await db.execute({
+      sql: "select * from category where id = ?",
+      args: [id],
+    });
+    const category = categoryResult.rows[0] as unknown as CategoryRow | undefined;
 
     revalidatePath("/menu");
     revalidatePath("/admin");
     revalidatePath("/admin/menu");
 
-    writeAuditLog({
+    await writeAuditLog({
       actorUserId: context.user.id,
       action: "menu.category.created",
       targetType: "category",

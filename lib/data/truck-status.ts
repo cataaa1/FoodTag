@@ -132,24 +132,25 @@ export function buildTruckStatus(
   };
 }
 
-export async function getTruckConfig() {
+export async function getTruckConfig(): Promise<TruckConfig> {
   const db = getDb();
-  const row = db.prepare<[], TruckConfigRow>("select * from truck_config limit 1").get();
+  const configResult = await db.execute("select * from truck_config limit 1");
+  const row = configResult.rows[0] as unknown as TruckConfigRow | undefined;
 
   if (!row) {
     throw new Error("No hay configuración del truck. Corré npm run seed.");
   }
 
-  const profile = db
-    .prepare<{ truckConfigId: string }, TruckProfileRow>(
-      `
-        select address, hero_image_url, public_tagline, instagram_handle,
-          allow_order_modifications
-        from truck_profile
-        where truck_config_id = @truckConfigId
-      `,
-    )
-    .get({ truckConfigId: row.id });
+  const profileResult = await db.execute({
+    sql: `
+      select address, hero_image_url, public_tagline, instagram_handle,
+        allow_order_modifications
+      from truck_profile
+      where truck_config_id = ?
+    `,
+    args: [row.id],
+  });
+  const profile = profileResult.rows[0] as unknown as TruckProfileRow | undefined;
 
   return {
     id: row.id,
@@ -174,13 +175,12 @@ export async function getTruckConfig() {
   } satisfies TruckConfig;
 }
 
-export async function getOpeningHours() {
-  const db = getDb();
-  const rows = db
-    .prepare<[], OpeningHoursRow>("select * from opening_hours order by weekday asc")
-    .all();
+export async function getOpeningHours(): Promise<OpeningHours[]> {
+  const result = await getDb().execute(
+    "select * from opening_hours order by weekday asc",
+  );
 
-  return rows.map((entry) => ({
+  return (result.rows as unknown as OpeningHoursRow[]).map((entry) => ({
     id: entry.id,
     weekday: entry.weekday,
     opensAt: entry.opens_at,
@@ -189,7 +189,7 @@ export async function getOpeningHours() {
   })) satisfies OpeningHours[];
 }
 
-export async function getTruckStatus() {
+export async function getTruckStatus(): Promise<TruckStatus> {
   const [config, hours] = await Promise.all([getTruckConfig(), getOpeningHours()]);
   return buildTruckStatus(config, hours);
 }

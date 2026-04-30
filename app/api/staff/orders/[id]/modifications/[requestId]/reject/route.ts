@@ -21,13 +21,13 @@ export async function POST(
     );
     await parseJsonBody(request, rejectModificationRequestSchema);
 
-    rejectModificationRequest({
+    await rejectModificationRequest({
       orderId: id,
       requestId,
       staffUserId: context.user.id,
     });
 
-    return NextResponse.json({ order: getStaffOrderById(id) });
+    return NextResponse.json({ order: await getStaffOrderById(id) });
   } catch (error) {
     return handleRouteError(error);
   }

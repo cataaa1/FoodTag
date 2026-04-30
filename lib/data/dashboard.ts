@@ -170,54 +170,59 @@ function getPreparationSeconds(order: DashboardOrderRow) {
   return Math.max(0, Math.round((readyAt.getTime() - createdAt.getTime()) / 1_000));
 }
 
-export async function getDashboardToday() {
+export async function getDashboardToday(): Promise<DashboardToday> {
   const db = getDb();
   const [config, hours] = await Promise.all([getTruckConfig(), getOpeningHours()]);
   const serviceDate = getServiceDate(config.timezone);
   const recentDates = getRecentServiceDates(config.timezone, 7);
-  const orderRows = db
-    .prepare<{ serviceDate: string }, DashboardOrderRow>(
-      `
+
+  const [orderResult, bestSellerResult, weeklyRevenueResult] = await Promise.all([
+    db.execute({
+      sql: `
         select status, payment_status, total_cents, created_at, ready_at
         from customer_order
-        where service_date = @serviceDate
+        where service_date = ?
         order by created_at asc
       `,
-    )
-    .all({ serviceDate });
-  const bestSeller = db
-    .prepare<{ serviceDate: string }, BestSellerRow>(
-      `
+      args: [serviceDate],
+    }),
+    db.execute({
+      sql: `
         select
           order_item.name_snapshot,
           coalesce(sum(order_item.quantity), 0) as quantity
         from order_item
         join customer_order on customer_order.id = order_item.order_id
-        where customer_order.service_date = @serviceDate
+        where customer_order.service_date = ?
           and customer_order.payment_status = 'approved'
         group by order_item.name_snapshot
         order by quantity desc, order_item.name_snapshot asc
         limit 1
       `,
-    )
-    .get({ serviceDate });
-  const weeklyRevenueRows = db
-    .prepare<{ fromDate: string; toDate: string }, WeeklyRevenueRow>(
-      `
+      args: [serviceDate],
+    }),
+    db.execute({
+      sql: `
         select
           service_date,
           coalesce(sum(total_cents), 0) as revenue_cents
         from customer_order
         where payment_status = 'approved'
-          and service_date >= @fromDate
-          and service_date <= @toDate
+          and service_date >= ?
+          and service_date <= ?
         group by service_date
       `,
-    )
-    .all({
-      fromDate: recentDates[0]?.serviceDate ?? serviceDate,
-      toDate: recentDates.at(-1)?.serviceDate ?? serviceDate,
-    });
+      args: [
+        recentDates[0]?.serviceDate ?? serviceDate,
+        recentDates.at(-1)?.serviceDate ?? serviceDate,
+      ],
+    }),
+  ]);
+
+  const orderRows = orderResult.rows as unknown as DashboardOrderRow[];
+  const bestSeller = bestSellerResult.rows[0] as unknown as BestSellerRow | undefined;
+  const weeklyRevenueRows = weeklyRevenueResult.rows as unknown as WeeklyRevenueRow[];
+
   const todaysHours = hours.find(
     (entry) => entry.weekday === getWeekdayInTimezone(config.timezone),
   );
@@ -256,18 +261,22 @@ export async function getDashboardToday() {
     hourlyBuckets.set(hourLabel, (hourlyBuckets.get(hourLabel) ?? 0) + 1);
   });
 
-  const weeklyAverageTicket = recentDates.map((entry) => {
-    const dailyOrders = db
-      .prepare<{ serviceDate: string }, DashboardOrderRow>(
-        `
+  const dailyOrderResults = await Promise.all(
+    recentDates.map((entry) =>
+      db.execute({
+        sql: `
           select status, payment_status, total_cents, created_at, ready_at
           from customer_order
-          where service_date = @serviceDate
+          where service_date = ?
             and payment_status = 'approved'
         `,
-      )
-      .all({ serviceDate: entry.serviceDate });
+        args: [entry.serviceDate],
+      }),
+    ),
+  );
 
+  const weeklyAverageTicket: DashboardAverageTicketBucket[] = recentDates.map((entry, i) => {
+    const dailyOrders = dailyOrderResults[i]!.rows as unknown as DashboardOrderRow[];
     return {
       serviceDate: entry.serviceDate,
       label: entry.label,
@@ -279,17 +288,8 @@ export async function getDashboardToday() {
     };
   });
 
-  const weeklyAveragePreparation = recentDates.map((entry) => {
-    const dailyOrders = db
-      .prepare<{ serviceDate: string }, DashboardOrderRow>(
-        `
-          select status, payment_status, total_cents, created_at, ready_at
-          from customer_order
-          where service_date = @serviceDate
-            and payment_status = 'approved'
-        `,
-      )
-      .all({ serviceDate: entry.serviceDate });
+  const weeklyAveragePreparation: DashboardPreparationBucket[] = recentDates.map((entry, i) => {
+    const dailyOrders = dailyOrderResults[i]!.rows as unknown as DashboardOrderRow[];
     const values = dailyOrders
       .map(getPreparationSeconds)
       .filter((value): value is number => value !== null);

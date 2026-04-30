@@ -15,7 +15,7 @@ export async function POST(
     const session = await requireCustomerSession();
     const { id } = parseParams(await params, customerOrderIdParamSchema);
     const body = await parseJsonBody(request, customerModificationRequestSchema);
-    const modificationRequest = createCustomerModificationRequest({
+    const modificationRequest = await createCustomerModificationRequest({
       customerId: session.customerId,
       orderId: id,
       items: body.items,

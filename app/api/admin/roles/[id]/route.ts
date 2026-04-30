@@ -23,9 +23,11 @@ export async function PATCH(
     const { id } = parseParams(await context.params, idParamSchema);
     const body = await parseJsonBody(request, roleUpdateSchema);
     const db = getDb();
-    const current = db
-      .prepare<{ id: string }, RoleRow>("select * from role where id = @id")
-      .get({ id });
+    const currentResult = await db.execute({
+      sql: "select * from role where id = ?",
+      args: [id],
+    });
+    const current = currentResult.rows[0] as unknown as RoleRow | undefined;
 
     if (!current) {
       throw new ApiError(404, "NOT_FOUND", "Rol no encontrado");
@@ -35,21 +37,18 @@ export async function PATCH(
     const nextPermissions =
       body.permissions ?? (JSON.parse(current.permissions_json) as string[]);
 
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         update role
         set
-          name = @name,
-          permissions_json = @permissionsJson
-        where id = @id
+          name = ?,
+          permissions_json = ?
+        where id = ?
       `,
-    ).run({
-      id,
-      name: nextName,
-      permissionsJson: JSON.stringify(nextPermissions),
+      args: [nextName, JSON.stringify(nextPermissions), id],
     });
 
-    writeAuditLog({
+    await writeAuditLog({
       actorUserId: staffContext.user.id,
       action: "role.updated",
       targetType: "role",
@@ -75,9 +74,11 @@ export async function DELETE(
     const staffContext = await requireStaffPermission("roles.manage");
     const { id } = parseParams(await context.params, idParamSchema);
     const db = getDb();
-    const current = db
-      .prepare<{ id: string }, RoleRow>("select * from role where id = @id")
-      .get({ id });
+    const currentResult = await db.execute({
+      sql: "select * from role where id = ?",
+      args: [id],
+    });
+    const current = currentResult.rows[0] as unknown as RoleRow | undefined;
 
     if (!current) {
       throw new ApiError(404, "NOT_FOUND", "Rol no encontrado");
@@ -87,19 +88,19 @@ export async function DELETE(
       throw new ApiError(409, "CONFLICT", "No se puede eliminar un rol del sistema");
     }
 
-    const users = db
-      .prepare<{ id: string }, { count: number }>(
-        "select count(*) as count from staff_user where role_id = @id",
-      )
-      .get({ id });
+    const usersResult = await db.execute({
+      sql: "select count(*) as count from staff_user where role_id = ?",
+      args: [id],
+    });
+    const users = usersResult.rows[0] as unknown as { count: number } | undefined;
 
     if ((users?.count ?? 0) > 0) {
       throw new ApiError(409, "CONFLICT", "Hay usuarios usando este rol");
     }
 
-    db.prepare("delete from role where id = @id").run({ id });
+    await db.execute({ sql: "delete from role where id = ?", args: [id] });
 
-    writeAuditLog({
+    await writeAuditLog({
       actorUserId: staffContext.user.id,
       action: "role.deleted",
       targetType: "role",

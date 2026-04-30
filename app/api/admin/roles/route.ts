@@ -29,10 +29,10 @@ export async function GET() {
   try {
     await requireStaffPermission("roles.manage");
 
-    const roles = getDb()
-      .prepare<[], RoleRow>("select * from role order by is_system desc, name asc")
-      .all()
-      .map(mapRole);
+    const result = await getDb().execute(
+      "select * from role order by is_system desc, name asc",
+    );
+    const roles = (result.rows as unknown as RoleRow[]).map(mapRole);
 
     return NextResponse.json({ roles });
   } catch (error) {
@@ -46,20 +46,15 @@ export async function POST(request: Request) {
     const body = await parseJsonBody(request, roleCreateSchema);
     const id = randomUUID();
 
-    getDb()
-      .prepare(
-        `
-          insert into role (id, name, is_system, permissions_json)
-          values (@id, @name, 0, @permissionsJson)
-        `,
-      )
-      .run({
-        id,
-        name: body.name,
-        permissionsJson: JSON.stringify(body.permissions),
-      });
+    await getDb().execute({
+      sql: `
+        insert into role (id, name, is_system, permissions_json)
+        values (?, ?, 0, ?)
+      `,
+      args: [id, body.name, JSON.stringify(body.permissions)],
+    });
 
-    writeAuditLog({
+    await writeAuditLog({
       actorUserId: context.user.id,
       action: "role.created",
       targetType: "role",

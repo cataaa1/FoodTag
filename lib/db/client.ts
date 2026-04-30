@@ -1,29 +1,13 @@
-import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
-import path from "node:path";
+import { createClient } from "@libsql/client";
 
 import { getServerEnv } from "@/lib/config/env";
 
-let db: Database.Database | null = null;
-
-function resolveDbPath() {
-  const configuredPath = getServerEnv().SQLITE_DB_PATH;
-  return path.isAbsolute(configuredPath)
-    ? configuredPath
-    : path.join(/*turbopackIgnore: true*/ process.cwd(), configuredPath);
-}
+let client: ReturnType<typeof createClient> | null = null;
 
 export function getDb() {
-  if (db) {
-    return db;
-  }
+  if (client) return client;
 
-  const dbPath = resolveDbPath();
-  mkdirSync(path.dirname(dbPath), { recursive: true });
-
-  db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-
-  return db;
+  const { TURSO_DATABASE_URL, TURSO_AUTH_TOKEN } = getServerEnv();
+  client = createClient({ url: TURSO_DATABASE_URL, authToken: TURSO_AUTH_TOKEN });
+  return client;
 }

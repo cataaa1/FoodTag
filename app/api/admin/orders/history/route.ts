@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { NextResponse } from "next/server";
 
 import { handleRouteError } from "@/lib/api/errors";
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const result = getOrderHistory(parsed.data);
+    const result = await getOrderHistory(parsed.data);
 
     return NextResponse.json(result);
   } catch (error) {

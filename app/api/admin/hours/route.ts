@@ -25,30 +25,22 @@ export async function PATCH(request: Request) {
 
     const body = await parseJsonBody(request, hoursPatchSchema);
     const db = getDb();
-    const statement = db.prepare(
-      `
-        update opening_hours set
-          opens_at = @opensAt,
-          closes_at = @closesAt,
-          closed = @closed
-        where weekday = @weekday
-      `,
+
+    await db.batch(
+      body.hours.map((entry) => ({
+        sql: `
+          update opening_hours set
+            opens_at = ?,
+            closes_at = ?,
+            closed = ?
+          where weekday = ?
+        `,
+        args: [entry.opensAt, entry.closesAt, entry.closed ? 1 : 0, entry.weekday],
+      })),
+      "write",
     );
 
-    const transaction = db.transaction(() => {
-      body.hours.forEach((entry) => {
-        statement.run({
-          weekday: entry.weekday,
-          opensAt: entry.opensAt,
-          closesAt: entry.closesAt,
-          closed: entry.closed ? 1 : 0,
-        });
-      });
-    });
-
-    transaction();
-
-    writeAuditLog({
+    await writeAuditLog({
       actorUserId: context.user.id,
       action: "truck.hours.updated",
       targetType: "opening_hours",

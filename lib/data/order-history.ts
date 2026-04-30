@@ -62,7 +62,7 @@ export type OrderHistoryResult = {
   totalPages: number;
 };
 
-export function getOrderHistory(filters: OrderHistoryFilters = {}): OrderHistoryResult {
+export async function getOrderHistory(filters: OrderHistoryFilters = {}): Promise<OrderHistoryResult> {
   const db = getDb();
   const {
     fromDate,
@@ -76,79 +76,80 @@ export function getOrderHistory(filters: OrderHistoryFilters = {}): OrderHistory
   } = filters;
 
   const conditions: string[] = ["1=1"];
-  const params: Record<string, string | number> = {};
+  const args: (string | number)[] = [];
 
   if (fromDate) {
-    conditions.push("co.service_date >= @fromDate");
-    params.fromDate = fromDate;
+    conditions.push("co.service_date >= ?");
+    args.push(fromDate);
   }
   if (toDate) {
-    conditions.push("co.service_date <= @toDate");
-    params.toDate = toDate;
+    conditions.push("co.service_date <= ?");
+    args.push(toDate);
   }
   if (status && status !== "all") {
-    conditions.push("co.status = @status");
-    params.status = status;
+    conditions.push("co.status = ?");
+    args.push(status);
   }
   if (minCents !== undefined) {
-    conditions.push("co.total_cents >= @minCents");
-    params.minCents = minCents;
+    conditions.push("co.total_cents >= ?");
+    args.push(minCents);
   }
   if (maxCents !== undefined) {
-    conditions.push("co.total_cents <= @maxCents");
-    params.maxCents = maxCents;
+    conditions.push("co.total_cents <= ?");
+    args.push(maxCents);
   }
   if (search?.trim()) {
     conditions.push(
-      "(c.name like @search or c.phone like @search or cast(co.ticket_number as text) like @search)",
+      "(c.name like ? or c.phone like ? or cast(co.ticket_number as text) like ?)",
     );
-    params.search = `%${search.trim()}%`;
+    const pattern = `%${search.trim()}%`;
+    args.push(pattern, pattern, pattern);
   }
 
   const where = conditions.join(" and ");
   const offset = (page - 1) * pageSize;
 
-  const countRow = db
-    .prepare<Record<string, string | number>, { total: number }>(
-      `select count(*) as total
-       from customer_order co
-       join customer c on c.id = co.customer_id
-       where ${where}`,
-    )
-    .get(params);
+  const [countResult, rowsResult] = await Promise.all([
+    db.execute({
+      sql: `select count(*) as total
+            from customer_order co
+            join customer c on c.id = co.customer_id
+            where ${where}`,
+      args,
+    }),
+    db.execute({
+      sql: `select
+               co.id,
+               co.ticket_number,
+               co.service_date,
+               co.status,
+               co.payment_status,
+               c.name as customer_name,
+               c.phone as customer_phone,
+               co.subtotal_cents,
+               co.tip_cents,
+               co.total_cents,
+               coalesce(sum(oi.quantity), 0) as item_count,
+               coalesce(group_concat(oi.name_snapshot, ', '), '') as item_summary,
+               co.cancel_reason,
+               co.paid_at,
+               co.ready_at,
+               co.delivered_at,
+               co.cancelled_at,
+               co.created_at
+             from customer_order co
+             join customer c on c.id = co.customer_id
+             left join order_item oi on oi.order_id = co.id
+             where ${where}
+             group by co.id
+             order by co.created_at desc
+             limit ? offset ?`,
+      args: [...args, pageSize, offset],
+    }),
+  ]);
 
-  const total = countRow?.total ?? 0;
-
-  const rows = db
-    .prepare<Record<string, string | number>, HistoryRow>(
-      `select
-         co.id,
-         co.ticket_number,
-         co.service_date,
-         co.status,
-         co.payment_status,
-         c.name as customer_name,
-         c.phone as customer_phone,
-         co.subtotal_cents,
-         co.tip_cents,
-         co.total_cents,
-         coalesce(sum(oi.quantity), 0) as item_count,
-         coalesce(group_concat(oi.name_snapshot, ', '), '') as item_summary,
-         co.cancel_reason,
-         co.paid_at,
-         co.ready_at,
-         co.delivered_at,
-         co.cancelled_at,
-         co.created_at
-       from customer_order co
-       join customer c on c.id = co.customer_id
-       left join order_item oi on oi.order_id = co.id
-       where ${where}
-       group by co.id
-       order by co.created_at desc
-       limit @pageSize offset @offset`,
-    )
-    .all({ ...params, pageSize, offset });
+  const total = (countResult.rows[0] as unknown as { total: number } | undefined)?.total ?? 0;
+  const rows = rowsResult.rows as unknown as HistoryRow[];
 
   return {
     orders: rows.map((row) => ({

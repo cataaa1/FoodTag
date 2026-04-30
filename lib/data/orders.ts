@@ -1,4 +1,3 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 
 import { ApiError } from "@/lib/api/errors";
@@ -193,16 +192,11 @@ function visibleStaffNotes(
   return visibleParts.join(", ") || null;
 }
 
-function getModifiersByMenuItemId(db: Database.Database) {
-  const rows = db
-    .prepare<[], MenuItemModifierRow>(
-      `
-        select menu_item_id, label, default_checked
-        from menu_item_modifier
-        order by position asc
-      `,
-    )
-    .all();
+async function getModifiersByMenuItemId() {
+  const result = await getDb().execute(
+    "select menu_item_id, label, default_checked from menu_item_modifier order by position asc",
+  );
+  const rows = result.rows as unknown as MenuItemModifierRow[];
   const byMenuItemId = new Map<string, MenuItemModifierRow[]>();
 
   rows.forEach((row) => {
@@ -255,18 +249,17 @@ function mapModificationRequest(
   };
 }
 
-function getModificationRequestsForOrder(orderId: string) {
-  return getDb()
-    .prepare<{ orderId: string }, OrderModificationRequestRow>(
-      `
-        select *
-        from order_modification_request
-        where order_id = @orderId
-        order by created_at asc
-      `,
-    )
-    .all({ orderId })
-    .map(mapModificationRequest);
+async function getModificationRequestsForOrder(orderId: string) {
+  const result = await getDb().execute({
+    sql: `
+      select *
+      from order_modification_request
+      where order_id = ?
+      order by created_at asc
+    `,
+    args: [orderId],
+  });
+  return (result.rows as unknown as OrderModificationRequestRow[]).map(mapModificationRequest);
 }
 
 function mapOrder(
@@ -316,52 +309,42 @@ function getServiceDate(timezone: string) {
   return `${year}-${month}-${day}`;
 }
 
-function nextTicketNumber(db: Database.Database, serviceDate: string) {
-  const current = db
-    .prepare<{ serviceDate: string }, TicketCounterRow>(
-      "select next_ticket_number from ticket_counter where service_date = @serviceDate",
-    )
-    .get({ serviceDate });
+function getNextOrderItemStatus(status: OrderItemStatus) {
+  const nextStatusByCurrent: Partial<Record<OrderItemStatus, OrderItemStatus>> = {
+    pending: "preparing",
+    preparing: "ready",
+    ready: "delivered",
+  };
 
-  if (!current) {
-    db.prepare(
-      "insert into ticket_counter (service_date, next_ticket_number) values (@serviceDate, 2)",
-    ).run({ serviceDate });
-    return 1;
-  }
-
-  db.prepare(
-    "update ticket_counter set next_ticket_number = next_ticket_number + 1 where service_date = @serviceDate",
-  ).run({ serviceDate });
-
-  return current.next_ticket_number;
+  return nextStatusByCurrent[status] ?? null;
 }
 
-export function upsertCustomer(input: CustomerSessionInput) {
+export async function upsertCustomer(input: CustomerSessionInput): Promise<Customer> {
   const db = getDb();
   const phone = normalizePhone(input.phone);
-  const existing = db
-    .prepare<{ phone: string }, CustomerRow>("select * from customer where phone = @phone")
-    .get({ phone });
+  const existingResult = await db.execute({
+    sql: "select * from customer where phone = ?",
+    args: [phone],
+  });
+  const existing = existingResult.rows[0] as unknown as CustomerRow | undefined;
   const id = existing?.id ?? randomUUID();
 
-  db.prepare(
-    `
+  await db.execute({
+    sql: `
       insert into customer (id, name, phone, updated_at)
-      values (@id, @name, @phone, datetime('now'))
+      values (?, ?, ?, datetime('now'))
       on conflict(phone) do update set
         name = excluded.name,
         updated_at = datetime('now')
     `,
-  ).run({
-    id,
-    name: input.name.trim(),
-    phone,
+    args: [id, input.name.trim(), phone],
   });
 
-  const row = db
-    .prepare<{ id: string }, CustomerRow>("select * from customer where id = @id")
-    .get({ id });
+  const rowResult = await db.execute({
+    sql: "select * from customer where id = ?",
+    args: [id],
+  });
+  const row = rowResult.rows[0] as unknown as CustomerRow | undefined;
 
   if (!row) {
     throw new ApiError(500, "INTERNAL", "No se pudo crear la sesión");
@@ -370,11 +353,12 @@ export function upsertCustomer(input: CustomerSessionInput) {
   return mapCustomer(row);
 }
 
-export function getCustomerById(customerId: string) {
-  const row = getDb()
-    .prepare<{ id: string }, CustomerRow>("select * from customer where id = @id")
-    .get({ id: customerId });
-
+export async function getCustomerById(customerId: string): Promise<Customer | null> {
+  const result = await getDb().execute({
+    sql: "select * from customer where id = ?",
+    args: [customerId],
+  });
+  const row = result.rows[0] as unknown as CustomerRow | undefined;
   return row ? mapCustomer(row) : null;
 }
 
@@ -399,207 +383,224 @@ export async function createCustomerOrder(
   const serviceDate = getServiceDate(config.timezone);
   const db = getDb();
 
-  const transaction = db.transaction(() => {
-    const customer = getCustomerById(customerId);
+  const customer = await getCustomerById(customerId);
+  if (!customer) {
+    throw new ApiError(401, "UNAUTHORIZED", "La sesión cliente ya no existe");
+  }
 
-    if (!customer) {
-      throw new ApiError(401, "UNAUTHORIZED", "La sesión cliente ya no existe");
+  const menuItemResults = await Promise.all(
+    input.items.map((entry) =>
+      db.execute({
+        sql: "select id, name, available, has_variants, price_cents from menu_item where id = ?",
+        args: [entry.menuItemId],
+      }),
+    ),
+  );
+
+  const orderItems: Array<{
+    id: string;
+    menuItemId: string;
+    menuVariantId: string | null;
+    quantity: number;
+    nameSnapshot: string;
+    variantNameSnapshot: string | null;
+    unitPriceCents: number;
+    lineTotalCents: number;
+    notes: string | null;
+  }> = [];
+
+  for (let i = 0; i < input.items.length; i++) {
+    const entry = input.items[i]!;
+    const menuItem = menuItemResults[i]!.rows[0] as unknown as MenuItemRow | undefined;
+
+    if (!menuItem || !menuItem.available) {
+      throw new ApiError(409, "OUT_OF_STOCK", "Uno de los productos ya no está disponible");
     }
 
-    const orderItems = input.items.map((entry) => {
-      const menuItem = db
-        .prepare<{ id: string }, MenuItemRow>(
-          "select id, name, available, has_variants, price_cents from menu_item where id = @id",
-        )
-        .get({ id: entry.menuItemId });
+    let variant: MenuVariantRow | null = null;
+    let unitPriceCents = menuItem.price_cents;
 
-      if (!menuItem || !menuItem.available) {
-        throw new ApiError(409, "OUT_OF_STOCK", "Uno de los productos ya no está disponible");
+    if (menuItem.has_variants) {
+      if (entry.menuVariantId) {
+        const variantResult = await db.execute({
+          sql: `
+            select id, menu_item_id, name, available, price_cents
+            from menu_variant
+            where id = ? and menu_item_id = ?
+          `,
+          args: [entry.menuVariantId, menuItem.id],
+        });
+        variant = (variantResult.rows[0] as unknown as MenuVariantRow | undefined) ?? null;
       }
 
-      let variant: MenuVariantRow | null = null;
-      let unitPriceCents = menuItem.price_cents;
-
-      if (menuItem.has_variants) {
-        if (entry.menuVariantId) {
-          variant = db
-            .prepare<{ id: string; menuItemId: string }, MenuVariantRow>(
-              `
-                select id, menu_item_id, name, available, price_cents
-                from menu_variant
-                where id = @id and menu_item_id = @menuItemId
-              `,
-            )
-            .get({ id: entry.menuVariantId, menuItemId: menuItem.id }) ?? null;
-        }
-
-        if (!variant || !variant.available) {
-          variant = db
-            .prepare<{ menuItemId: string }, MenuVariantRow>(
-            `
-              select id, menu_item_id, name, available, price_cents
-              from menu_variant
-              where menu_item_id = @menuItemId and available = 1
-              order by position asc
-              limit 1
-            `,
-            )
-            .get({ menuItemId: menuItem.id }) ?? null;
-        }
-
-        if (!variant) {
-          throw new ApiError(409, "OUT_OF_STOCK", "No hay variantes disponibles para este producto");
-        }
-
-        unitPriceCents = variant.price_cents;
+      if (!variant || !variant.available) {
+        const fallbackResult = await db.execute({
+          sql: `
+            select id, menu_item_id, name, available, price_cents
+            from menu_variant
+            where menu_item_id = ? and available = 1
+            order by position asc
+            limit 1
+          `,
+          args: [menuItem.id],
+        });
+        variant = (fallbackResult.rows[0] as unknown as MenuVariantRow | undefined) ?? null;
       }
 
-      return {
-        id: randomUUID(),
-        menuItemId: menuItem.id,
-        menuVariantId: variant?.id ?? null,
-        quantity: entry.quantity,
-        nameSnapshot: menuItem.name,
-        variantNameSnapshot: variant?.name ?? null,
-        unitPriceCents,
-        lineTotalCents: unitPriceCents * entry.quantity,
-        notes: entry.notes?.trim() || null,
-      };
+      if (!variant) {
+        throw new ApiError(409, "OUT_OF_STOCK", "No hay variantes disponibles para este producto");
+      }
+
+      unitPriceCents = variant.price_cents;
+    }
+
+    orderItems.push({
+      id: randomUUID(),
+      menuItemId: menuItem.id,
+      menuVariantId: variant?.id ?? null,
+      quantity: entry.quantity,
+      nameSnapshot: menuItem.name,
+      variantNameSnapshot: variant?.name ?? null,
+      unitPriceCents,
+      lineTotalCents: unitPriceCents * entry.quantity,
+      notes: entry.notes?.trim() || null,
     });
+  }
 
-    const subtotalCents = orderItems.reduce(
-      (total, item) => total + item.lineTotalCents,
-      0,
-    );
-    const tipCents = input.tipCents;
-    const totalCents = subtotalCents + tipCents;
-    const orderId = randomUUID();
-    const ticketNumber = nextTicketNumber(db, serviceDate);
-    const paymentStatus = options.paymentStatus ?? "approved";
+  const subtotalCents = orderItems.reduce((total, item) => total + item.lineTotalCents, 0);
+  const tipCents = input.tipCents;
+  const totalCents = subtotalCents + tipCents;
+  const orderId = randomUUID();
+  const paymentStatus = options.paymentStatus ?? "approved";
 
-    db.prepare(
-      `
+  const counterResult = await db.execute({
+    sql: "select next_ticket_number from ticket_counter where service_date = ?",
+    args: [serviceDate],
+  });
+  const counterRow = counterResult.rows[0] as unknown as TicketCounterRow | undefined;
+
+  let ticketNumber: number;
+  if (!counterRow) {
+    await db.execute({
+      sql: "insert into ticket_counter (service_date, next_ticket_number) values (?, 2)",
+      args: [serviceDate],
+    });
+    ticketNumber = 1;
+  } else {
+    ticketNumber = counterRow.next_ticket_number;
+    await db.execute({
+      sql: "update ticket_counter set next_ticket_number = next_ticket_number + 1 where service_date = ?",
+      args: [serviceDate],
+    });
+  }
+
+  const insertStatements = [
+    {
+      sql: `
         insert into customer_order (
           id, ticket_number, service_date, customer_id, status, payment_status,
           subtotal_cents, tip_cents, total_cents
         )
-        values (
-          @id, @ticketNumber, @serviceDate, @customerId, 'pending', @paymentStatus,
-          @subtotalCents, @tipCents, @totalCents
-        )
+        values (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
       `,
-    ).run({
-      id: orderId,
-      ticketNumber,
-      serviceDate,
-      customerId,
-      paymentStatus,
-      subtotalCents,
-      tipCents,
-      totalCents,
-    });
-
-    const insertItem = db.prepare(
-      `
+      args: [orderId, ticketNumber, serviceDate, customerId, paymentStatus, subtotalCents, tipCents, totalCents],
+    },
+    ...orderItems.map((item) => ({
+      sql: `
         insert into order_item (
           id, order_id, menu_item_id, menu_variant_id, quantity,
           name_snapshot, variant_name_snapshot, unit_price_cents,
           line_total_cents, notes
         )
-        values (
-          @id, @orderId, @menuItemId, @menuVariantId, @quantity,
-          @nameSnapshot, @variantNameSnapshot, @unitPriceCents,
-          @lineTotalCents, @notes
-        )
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-    );
-
-    orderItems.forEach((item) => {
-      insertItem.run({
-        ...item,
+      args: [
+        item.id,
         orderId,
-      });
-    });
+        item.menuItemId,
+        item.menuVariantId,
+        item.quantity,
+        item.nameSnapshot,
+        item.variantNameSnapshot,
+        item.unitPriceCents,
+        item.lineTotalCents,
+        item.notes,
+      ],
+    })),
+  ];
 
-    const order = getCustomerOrderById(customerId, orderId);
+  await db.batch(insertStatements, "write");
 
-    if (!order) {
-      throw new ApiError(500, "INTERNAL", "No se pudo crear el pedido");
-    }
+  const order = await getCustomerOrderById(customerId, orderId);
+  if (!order) {
+    throw new ApiError(500, "INTERNAL", "No se pudo crear el pedido");
+  }
 
-    return order;
-  });
-
-  return transaction();
+  return order;
 }
 
-export function getCustomerOrderById(customerId: string, orderId: string) {
+export async function getCustomerOrderById(
+  customerId: string,
+  orderId: string,
+): Promise<CustomerOrder | null> {
   const db = getDb();
-  const orderRow = db
-    .prepare<{ id: string; customerId: string }, OrderRow>(
-      "select * from customer_order where id = @id and customer_id = @customerId",
-    )
-    .get({ id: orderId, customerId });
+  const orderResult = await db.execute({
+    sql: "select * from customer_order where id = ? and customer_id = ?",
+    args: [orderId, customerId],
+  });
+  const orderRow = orderResult.rows[0] as unknown as OrderRow | undefined;
 
   if (!orderRow) {
     return null;
   }
 
-  const itemRows = db
-    .prepare<{ orderId: string }, OrderItemRow>(
-      "select * from order_item where order_id = @orderId order by rowid asc",
-    )
-    .all({ orderId });
+  const [itemResult, modRequests] = await Promise.all([
+    db.execute({
+      sql: "select * from order_item where order_id = ? order by rowid asc",
+      args: [orderId],
+    }),
+    getModificationRequestsForOrder(orderId),
+  ]);
 
   return mapOrder(
     orderRow,
-    itemRows.map(mapOrderItem),
-    getModificationRequestsForOrder(orderId),
+    (itemResult.rows as unknown as OrderItemRow[]).map(mapOrderItem),
+    modRequests,
   );
 }
 
-export function getActiveOrderForCustomer(customerId: string): { id: string } | null {
-  return (
-    getDb()
-      .prepare<{ customerId: string }, { id: string }>(
-        `select id from customer_order
-         where customer_id = @customerId
-           and status not in ('cancelled', 'delivered')
-           and picked_up_at is null
-         order by created_at desc
-         limit 1`,
-      )
-      .get({ customerId }) ?? null
+export async function getActiveOrderForCustomer(customerId: string): Promise<{ id: string } | null> {
+  const result = await getDb().execute({
+    sql: `select id from customer_order
+          where customer_id = ?
+            and status not in ('cancelled', 'delivered')
+            and picked_up_at is null
+          order by created_at desc
+          limit 1`,
+    args: [customerId],
+  });
+  return (result.rows[0] as unknown as { id: string } | undefined) ?? null;
+}
+
+async function getOrderRowById(orderId: string): Promise<OrderRow | undefined> {
+  const result = await getDb().execute({
+    sql: "select * from customer_order where id = ?",
+    args: [orderId],
+  });
+  return result.rows[0] as unknown as OrderRow | undefined;
+}
+
+async function getCustomerPickupCooldownSeconds(): Promise<number> {
+  const result = await getDb().execute(
+    "select customer_pickup_cooldown_seconds from truck_config limit 1",
   );
-}
-
-function getOrderRowById(orderId: string) {
-  return getDb()
-    .prepare<{ id: string }, OrderRow>("select * from customer_order where id = @id")
-    .get({ id: orderId });
-}
-
-function getCustomerPickupCooldownSeconds(db: Database.Database) {
-  const row = db
-    .prepare<[], { customer_pickup_cooldown_seconds: number }>(
-      "select customer_pickup_cooldown_seconds from truck_config limit 1",
-    )
-    .get();
-
+  const row = result.rows[0] as unknown as { customer_pickup_cooldown_seconds: number } | undefined;
   return Math.max(0, row?.customer_pickup_cooldown_seconds ?? 15);
 }
 
-function getNextOrderItemStatus(status: OrderItemStatus) {
-  const nextStatusByCurrent: Partial<Record<OrderItemStatus, OrderItemStatus>> = {
-    pending: "preparing",
-    preparing: "ready",
-    ready: "delivered",
-  };
+async function assertOrderCanMove(orderId: string): Promise<OrderRow> {
+  const current = await getOrderRowById(orderId);
 
-  return nextStatusByCurrent[status] ?? null;
-}
-
-function assertOrderCanMove(current: OrderRow | undefined) {
   if (!current) {
     throw new ApiError(404, "NOT_FOUND", "Pedido no encontrado");
   }
@@ -608,7 +609,8 @@ function assertOrderCanMove(current: OrderRow | undefined) {
     throw new ApiError(409, "CONFLICT", "El pago del pedido todavia no esta aprobado");
   }
 
-  const activeModification = getModificationRequestsForOrder(current.id).find((request) =>
+  const modRequests = await getModificationRequestsForOrder(current.id);
+  const activeModification = modRequests.find((request) =>
     request.status === "pending" || request.status === "extra_payment_pending"
   );
 
@@ -623,28 +625,27 @@ function assertOrderCanMove(current: OrderRow | undefined) {
   return current;
 }
 
-function syncOrderStatusFromItems(db: Database.Database, orderId: string) {
-  const statusCounts = db
-    .prepare<
-      { orderId: string },
-      {
-        total_count: number;
-        pending_count: number;
-        ready_count: number;
-        delivered_count: number;
-      }
-    >(
-      `
-        select
-          count(*) as total_count,
-          coalesce(sum(case when status = 'pending' then 1 else 0 end), 0) as pending_count,
-          coalesce(sum(case when status = 'ready' then 1 else 0 end), 0) as ready_count,
-          coalesce(sum(case when status = 'delivered' then 1 else 0 end), 0) as delivered_count
-        from order_item
-        where order_id = @orderId
-      `,
-    )
-    .get({ orderId });
+async function syncOrderStatusFromItems(orderId: string): Promise<void> {
+  const db = getDb();
+  const statusResult = await db.execute({
+    sql: `
+      select
+        count(*) as total_count,
+        coalesce(sum(case when status = 'pending' then 1 else 0 end), 0) as pending_count,
+        coalesce(sum(case when status = 'ready' then 1 else 0 end), 0) as ready_count,
+        coalesce(sum(case when status = 'delivered' then 1 else 0 end), 0) as delivered_count
+      from order_item
+      where order_id = ?
+    `,
+    args: [orderId],
+  });
+
+  const statusCounts = statusResult.rows[0] as unknown as {
+    total_count: number;
+    pending_count: number;
+    ready_count: number;
+    delivered_count: number;
+  } | undefined;
 
   if (!statusCounts || statusCounts.total_count === 0) {
     throw new ApiError(409, "CONFLICT", "El pedido no tiene items para avanzar");
@@ -660,231 +661,189 @@ function syncOrderStatusFromItems(db: Database.Database, orderId: string) {
           ? "preparing"
           : "pending";
 
-  db.prepare(
-    `
+  await db.execute({
+    sql: `
       update customer_order set
-        status = @status,
+        status = ?,
         ready_at = case
-          when @status = 'ready' and ready_at is null then datetime('now')
+          when ? = 'ready' and ready_at is null then datetime('now')
           else ready_at
         end,
         pulse_at = case
-          when @status = 'ready' and status <> 'ready' then datetime('now')
+          when ? = 'ready' and status <> 'ready' then datetime('now')
           else pulse_at
         end,
         delivered_at = case
-          when @status = 'delivered' and delivered_at is null then datetime('now')
-          when @status <> 'delivered' then null
+          when ? = 'delivered' and delivered_at is null then datetime('now')
+          when ? <> 'delivered' then null
           else delivered_at
         end,
         picked_up_at = case
-          when @status in ('pending', 'preparing') then null
+          when ? in ('pending', 'preparing') then null
           else picked_up_at
         end,
         updated_at = datetime('now')
-      where id = @id
+      where id = ?
     `,
-  ).run({
-    id: orderId,
-    status: nextOrderStatus,
-  });
-}
-
-export function advanceStaffOrderItem(orderId: string, itemId: string) {
-  const db = getDb();
-  const transaction = db.transaction(() => {
-    assertOrderCanMove(getOrderRowById(orderId));
-
-    const item = db
-      .prepare<{ orderId: string; itemId: string }, OrderItemRow>(
-        `
-          select *
-          from order_item
-          where id = @itemId and order_id = @orderId
-        `,
-      )
-      .get({ orderId, itemId });
-
-    if (!item) {
-      throw new ApiError(404, "NOT_FOUND", "Item no encontrado");
-    }
-
-    const nextStatus = getNextOrderItemStatus(item.status);
-
-    if (!nextStatus) {
-      throw new ApiError(409, "CONFLICT", "Este item ya fue entregado");
-    }
-
-    db.prepare(
-      `
-        update order_item set
-          status = @status
-        where id = @itemId and order_id = @orderId
-      `,
-    ).run({
+    args: [
+      nextOrderStatus,
+      nextOrderStatus,
+      nextOrderStatus,
+      nextOrderStatus,
+      nextOrderStatus,
+      nextOrderStatus,
       orderId,
-      itemId,
-      status: nextStatus,
-    });
-
-    syncOrderStatusFromItems(db, orderId);
-
-    return getStaffOrderById(orderId);
+    ],
   });
-
-  return transaction();
 }
 
-export function advanceAllStaffOrderItems(orderId: string) {
+export async function advanceStaffOrderItem(orderId: string, itemId: string) {
   const db = getDb();
-  const transaction = db.transaction(() => {
-    assertOrderCanMove(getOrderRowById(orderId));
+  await assertOrderCanMove(orderId);
 
-    const itemRows = db
-      .prepare<{ orderId: string }, OrderItemRow>(
-        "select * from order_item where order_id = @orderId order by rowid asc",
-      )
-      .all({ orderId });
+  const itemResult = await db.execute({
+    sql: "select * from order_item where id = ? and order_id = ?",
+    args: [itemId, orderId],
+  });
+  const item = itemResult.rows[0] as unknown as OrderItemRow | undefined;
 
-    if (!itemRows.length) {
-      throw new ApiError(409, "CONFLICT", "El pedido no tiene items para avanzar");
-    }
+  if (!item) {
+    throw new ApiError(404, "NOT_FOUND", "Item no encontrado");
+  }
 
-    const currentStatus: OrderItemStatus | null = itemRows.some(
-      (item) => item.status === "pending",
-    )
-      ? "pending"
-      : itemRows.some((item) => item.status === "preparing")
-        ? "preparing"
-        : itemRows.some((item) => item.status === "ready")
-          ? "ready"
-          : null;
+  const nextStatus = getNextOrderItemStatus(item.status);
 
-    if (!currentStatus) {
-      throw new ApiError(409, "CONFLICT", "Todos los items ya fueron entregados");
-    }
+  if (!nextStatus) {
+    throw new ApiError(409, "CONFLICT", "Este item ya fue entregado");
+  }
 
-    const nextStatus = getNextOrderItemStatus(currentStatus);
-
-    if (!nextStatus) {
-      throw new ApiError(409, "CONFLICT", "El pedido no puede avanzar desde este estado");
-    }
-
-    db.prepare(
-      `
-        update order_item set
-          status = @nextStatus
-        where order_id = @orderId and status = @currentStatus
-      `,
-    ).run({
-      orderId,
-      currentStatus,
-      nextStatus,
-    });
-
-    syncOrderStatusFromItems(db, orderId);
-
-    return getStaffOrderById(orderId);
+  await db.execute({
+    sql: "update order_item set status = ? where id = ? and order_id = ?",
+    args: [nextStatus, itemId, orderId],
   });
 
-  return transaction();
+  await syncOrderStatusFromItems(orderId);
+  return getStaffOrderById(orderId);
 }
 
-export function advanceStaffOrder(orderId: string) {
+export async function advanceAllStaffOrderItems(orderId: string) {
+  const db = getDb();
+  await assertOrderCanMove(orderId);
+
+  const itemsResult = await db.execute({
+    sql: "select * from order_item where order_id = ? order by rowid asc",
+    args: [orderId],
+  });
+  const itemRows = itemsResult.rows as unknown as OrderItemRow[];
+
+  if (!itemRows.length) {
+    throw new ApiError(409, "CONFLICT", "El pedido no tiene items para avanzar");
+  }
+
+  const currentStatus: OrderItemStatus | null = itemRows.some(
+    (item) => item.status === "pending",
+  )
+    ? "pending"
+    : itemRows.some((item) => item.status === "preparing")
+      ? "preparing"
+      : itemRows.some((item) => item.status === "ready")
+        ? "ready"
+        : null;
+
+  if (!currentStatus) {
+    throw new ApiError(409, "CONFLICT", "Todos los items ya fueron entregados");
+  }
+
+  const nextStatus = getNextOrderItemStatus(currentStatus);
+
+  if (!nextStatus) {
+    throw new ApiError(409, "CONFLICT", "El pedido no puede avanzar desde este estado");
+  }
+
+  await db.execute({
+    sql: "update order_item set status = ? where order_id = ? and status = ?",
+    args: [nextStatus, orderId, currentStatus],
+  });
+
+  await syncOrderStatusFromItems(orderId);
+  return getStaffOrderById(orderId);
+}
+
+export async function advanceStaffOrder(orderId: string) {
   return advanceAllStaffOrderItems(orderId);
 }
 
-export function bumpStaffOrder(orderId: string) {
+export async function bumpStaffOrder(orderId: string) {
   const db = getDb();
-  const transaction = db.transaction(() => {
-    assertOrderCanMove(getOrderRowById(orderId));
+  await assertOrderCanMove(orderId);
 
-    db.prepare(
-      `
-        update order_item set
-          status = 'delivered'
-        where order_id = @orderId
-      `,
-    ).run({ orderId });
-
-    syncOrderStatusFromItems(db, orderId);
-
-    return getStaffOrderById(orderId);
+  await db.execute({
+    sql: "update order_item set status = 'delivered' where order_id = ?",
+    args: [orderId],
   });
 
-  return transaction();
+  await syncOrderStatusFromItems(orderId);
+  return getStaffOrderById(orderId);
 }
 
-export function unbumpStaffOrder(orderId: string) {
+export async function unbumpStaffOrder(orderId: string) {
   const db = getDb();
-  const transaction = db.transaction(() => {
-    const current = assertOrderCanMove(getOrderRowById(orderId));
+  const current = await assertOrderCanMove(orderId);
 
-    if (current.status !== "delivered") {
-      throw new ApiError(409, "CONFLICT", "Solo podes hacer unbump de pedidos entregados");
-    }
+  if (current.status !== "delivered") {
+    throw new ApiError(409, "CONFLICT", "Solo podes hacer unbump de pedidos entregados");
+  }
 
-    db.prepare(
-      `
-        update order_item set
-          status = 'ready'
-        where order_id = @orderId
-      `,
-    ).run({ orderId });
-
-    syncOrderStatusFromItems(db, orderId);
-
-    return getStaffOrderById(orderId);
+  await db.execute({
+    sql: "update order_item set status = 'ready' where order_id = ?",
+    args: [orderId],
   });
 
-  return transaction();
+  await syncOrderStatusFromItems(orderId);
+  return getStaffOrderById(orderId);
 }
 
-export function confirmCustomerOrderPickup(customerId: string, orderId: string) {
+export async function confirmCustomerOrderPickup(customerId: string, orderId: string) {
   const db = getDb();
-  const transaction = db.transaction(() => {
-    const current = db
-      .prepare<{ id: string; customerId: string }, OrderRow>(
-        "select * from customer_order where id = @id and customer_id = @customerId",
-      )
-      .get({ id: orderId, customerId });
+  const currentResult = await db.execute({
+    sql: "select * from customer_order where id = ? and customer_id = ?",
+    args: [orderId, customerId],
+  });
+  const current = currentResult.rows[0] as unknown as OrderRow | undefined;
 
-    if (!current) {
-      throw new ApiError(404, "NOT_FOUND", "No encontramos ese ticket");
-    }
+  if (!current) {
+    throw new ApiError(404, "NOT_FOUND", "No encontramos ese ticket");
+  }
 
-    if (current.payment_status !== "approved") {
-      throw new ApiError(409, "CONFLICT", "El pago del pedido todavia no esta aprobado");
-    }
+  if (current.payment_status !== "approved") {
+    throw new ApiError(409, "CONFLICT", "El pago del pedido todavia no esta aprobado");
+  }
 
-    if (current.status !== "ready" && current.status !== "delivered") {
-      throw new ApiError(409, "CONFLICT", "Todavia no podes confirmar el retiro");
-    }
+  if (current.status !== "ready" && current.status !== "delivered") {
+    throw new ApiError(409, "CONFLICT", "Todavia no podes confirmar el retiro");
+  }
 
-    db.prepare(
-      `
-        update customer_order set
-          picked_up_at = coalesce(picked_up_at, datetime('now')),
-          updated_at = datetime('now')
-        where id = @orderId
-      `,
-    ).run({ orderId });
-
-    const order = getCustomerOrderById(customerId, orderId);
-
-    if (!order) {
-      throw new ApiError(500, "INTERNAL", "No pudimos confirmar el retiro");
-    }
-
-    return order;
+  await db.execute({
+    sql: `
+      update customer_order set
+        picked_up_at = coalesce(picked_up_at, datetime('now')),
+        updated_at = datetime('now')
+      where id = ?
+    `,
+    args: [orderId],
   });
 
-  return transaction();
+  const order = await getCustomerOrderById(customerId, orderId);
+  if (!order) {
+    throw new ApiError(500, "INTERNAL", "No pudimos confirmar el retiro");
+  }
+
+  return order;
 }
 
-export function pulseStaffOrder(orderId: string) {
+export async function pulseStaffOrder(orderId: string) {
   const db = getDb();
-  const current = getOrderRowById(orderId);
+  const current = await getOrderRowById(orderId);
 
   if (!current) {
     throw new ApiError(404, "NOT_FOUND", "Pedido no encontrado");
@@ -894,21 +853,22 @@ export function pulseStaffOrder(orderId: string) {
     throw new ApiError(409, "CONFLICT", "Solo podés llamar pedidos listos");
   }
 
-  db.prepare(
-    `
+  await db.execute({
+    sql: `
       update customer_order set
         pulse_at = datetime('now'),
         updated_at = datetime('now')
-      where id = @id
+      where id = ?
     `,
-  ).run({ id: orderId });
+    args: [orderId],
+  });
 
   return getStaffOrderById(orderId);
 }
 
-export function cancelStaffOrder(orderId: string, reason: string) {
+export async function cancelStaffOrder(orderId: string, reason: string) {
   const db = getDb();
-  const current = getOrderRowById(orderId);
+  const current = await getOrderRowById(orderId);
 
   if (!current) {
     throw new ApiError(404, "NOT_FOUND", "Pedido no encontrado");
@@ -918,27 +878,29 @@ export function cancelStaffOrder(orderId: string, reason: string) {
     throw new ApiError(409, "CONFLICT", "Este pedido ya está cerrado");
   }
 
-  db.prepare(
-    `
+  await db.execute({
+    sql: `
       update customer_order set
         status = 'cancelled',
         cancelled_at = datetime('now'),
-        cancel_reason = @reason,
+        cancel_reason = ?,
         updated_at = datetime('now')
-      where id = @id
+      where id = ?
     `,
-  ).run({ id: orderId, reason });
+    args: [reason, orderId],
+  });
 
   return getStaffOrderById(orderId);
 }
 
-export function getStaffOrders() {
+export async function getStaffOrders() {
   const db = getDb();
-  const cooldownSeconds = getCustomerPickupCooldownSeconds(db);
+  const cooldownSeconds = await getCustomerPickupCooldownSeconds();
   const pickupVisibleSince = `-${cooldownSeconds} seconds`;
-  const orderRows = db
-    .prepare<{ pickupVisibleSince: string }, StaffOrderRow>(
-      `
+
+  const [orderResult, itemResult, modifiersByMenuItemId] = await Promise.all([
+    db.execute({
+      sql: `
         select
           customer_order.*,
           customer.name as customer_name,
@@ -952,7 +914,7 @@ export function getStaffOrders() {
               customer_order.status = 'ready'
               and (
                 customer_order.picked_up_at is null
-                or customer_order.picked_up_at >= datetime('now', @pickupVisibleSince)
+                or customer_order.picked_up_at >= datetime('now', ?)
               )
             )
             or (
@@ -962,84 +924,95 @@ export function getStaffOrders() {
           )
         order by customer_order.created_at asc
       `,
-    )
-    .all({ pickupVisibleSince });
-  const itemRows = db
-    .prepare<[], OrderItemRow>(
-      "select * from order_item order by rowid asc",
-    )
-    .all();
-  const modifiersByMenuItemId = getModifiersByMenuItemId(db);
+      args: [pickupVisibleSince],
+    }),
+    db.execute("select * from order_item order by rowid asc"),
+    getModifiersByMenuItemId(),
+  ]);
 
-  return orderRows.map((row) => ({
+  const orderRows = orderResult.rows as unknown as StaffOrderRow[];
+  const itemRows = itemResult.rows as unknown as OrderItemRow[];
+
+  const modRequestResults = await Promise.all(
+    orderRows.map((row) => getModificationRequestsForOrder(row.id)),
+  );
+
+  return orderRows.map((row, i) => ({
     ...mapOrder(
       row,
       itemRows
         .filter((item) => item.order_id === row.id)
         .map((item) => mapStaffOrderItem(item, modifiersByMenuItemId)),
-      getModificationRequestsForOrder(row.id),
+      modRequestResults[i] ?? [],
     ),
     customerName: row.customer_name,
     customerPhone: row.customer_phone,
   }));
 }
 
-export function getStaffOrderById(orderId: string) {
+export async function getStaffOrderById(orderId: string) {
   const db = getDb();
-  const row = db
-    .prepare<{ id: string }, StaffOrderRow>(
-      `
-        select
-          customer_order.*,
-          customer.name as customer_name,
-          customer.phone as customer_phone
-        from customer_order
-        join customer on customer.id = customer_order.customer_id
-        where customer_order.id = @id
-      `,
-    )
-    .get({ id: orderId });
+  const rowResult = await db.execute({
+    sql: `
+      select
+        customer_order.*,
+        customer.name as customer_name,
+        customer.phone as customer_phone
+      from customer_order
+      join customer on customer.id = customer_order.customer_id
+      where customer_order.id = ?
+    `,
+    args: [orderId],
+  });
+  const row = rowResult.rows[0] as unknown as StaffOrderRow | undefined;
 
   if (!row) {
     return null;
   }
 
-  const itemRows = db
-    .prepare<{ orderId: string }, OrderItemRow>(
-      "select * from order_item where order_id = @orderId order by rowid asc",
-    )
-    .all({ orderId });
-  const modifiersByMenuItemId = getModifiersByMenuItemId(db);
+  const [itemResult, modRequests, modifiersByMenuItemId] = await Promise.all([
+    db.execute({
+      sql: "select * from order_item where order_id = ? order by rowid asc",
+      args: [orderId],
+    }),
+    getModificationRequestsForOrder(orderId),
+    getModifiersByMenuItemId(),
+  ]);
 
   return {
     ...mapOrder(
       row,
-      itemRows.map((item) => mapStaffOrderItem(item, modifiersByMenuItemId)),
-      getModificationRequestsForOrder(orderId),
+      (itemResult.rows as unknown as OrderItemRow[]).map((item) =>
+        mapStaffOrderItem(item, modifiersByMenuItemId),
+      ),
+      modRequests,
     ),
     customerName: row.customer_name,
     customerPhone: row.customer_phone,
   };
 }
 
-function getModificationRequestRow(orderId: string, requestId: string) {
-  return getDb()
-    .prepare<{ orderId: string; requestId: string }, OrderModificationRequestRow>(
-      `
-        select *
-        from order_modification_request
-        where id = @requestId and order_id = @orderId
-      `,
-    )
-    .get({ orderId, requestId });
+async function getModificationRequestRow(
+  orderId: string,
+  requestId: string,
+): Promise<OrderModificationRequestRow | undefined> {
+  const result = await getDb().execute({
+    sql: `
+      select *
+      from order_modification_request
+      where id = ? and order_id = ?
+    `,
+    args: [requestId, orderId],
+  });
+  return result.rows[0] as unknown as OrderModificationRequestRow | undefined;
 }
 
-export function getModificationRequest(orderId: string, requestId: string) {
-  const row = getModificationRequestRow(orderId, requestId);
+export async function getModificationRequest(orderId: string, requestId: string) {
+  const row = await getModificationRequestRow(orderId, requestId);
   return row ? mapModificationRequest(row) : null;
 }
 
-export function createCustomerModificationRequest(input: {
+export async function createCustomerModificationRequest(input: {
   customerId: string;
   orderId: string;
   items: Array<{
@@ -1048,7 +1021,7 @@ export function createCustomerModificationRequest(input: {
   }>;
 }) {
   const db = getDb();
-  const order = getCustomerOrderById(input.customerId, input.orderId);
+  const order = await getCustomerOrderById(input.customerId, input.orderId);
 
   if (!order) {
     throw new ApiError(404, "NOT_FOUND", "No encontramos ese ticket");
@@ -1058,11 +1031,10 @@ export function createCustomerModificationRequest(input: {
     throw new ApiError(409, "CONFLICT", "El pedido todavia no tiene el pago aprobado");
   }
 
-  const config = getDb()
-    .prepare<[], { allow_order_modifications: number }>(
-      "select allow_order_modifications from truck_profile limit 1",
-    )
-    .get();
+  const configResult = await db.execute(
+    "select allow_order_modifications from truck_profile limit 1",
+  );
+  const config = configResult.rows[0] as unknown as { allow_order_modifications: number } | undefined;
 
   if (config && !config.allow_order_modifications) {
     throw new ApiError(
@@ -1090,24 +1062,24 @@ export function createCustomerModificationRequest(input: {
 
   const id = randomUUID();
 
-  const requestItems = input.items.map((entry) => {
-    const orderItem = order.items.find((item) => item.id === entry.orderItemId);
+  const modifierResults = await Promise.all(
+    input.items.map((entry) => {
+      const orderItem = order.items.find((item) => item.id === entry.orderItemId);
+      if (!orderItem) {
+        throw new ApiError(400, "INVALID_INPUT", "Uno de los items no pertenece al pedido");
+      }
+      return db.execute({
+        sql: "select label from menu_item_modifier where menu_item_id = ? order by position asc",
+        args: [orderItem.menuItemId],
+      });
+    }),
+  );
 
-    if (!orderItem) {
-      throw new ApiError(400, "INVALID_INPUT", "Uno de los items no pertenece al pedido");
-    }
-
-    const allowedLabels = db
-      .prepare<{ menuItemId: string }, MenuModifierRow>(
-        `
-          select label
-          from menu_item_modifier
-          where menu_item_id = @menuItemId
-          order by position asc
-        `,
-      )
-      .all({ menuItemId: orderItem.menuItemId })
-      .map((modifier) => modifier.label);
+  const requestItems = input.items.map((entry, i) => {
+    const orderItem = order.items.find((item) => item.id === entry.orderItemId)!;
+    const allowedLabels = (modifierResults[i]!.rows as unknown as MenuModifierRow[]).map(
+      (m) => m.label,
+    );
     const uniqueLabels = Array.from(new Set(entry.modifierLabels));
     const invalidLabel = uniqueLabels.find((label) => !allowedLabels.includes(label));
 
@@ -1126,6 +1098,7 @@ export function createCustomerModificationRequest(input: {
       modifierLabels: uniqueLabels,
     };
   });
+
   const requestText = requestItems
     .map((item) => {
       const labels = item.modifierLabels.length
@@ -1135,23 +1108,17 @@ export function createCustomerModificationRequest(input: {
     })
     .join(" | ");
 
-  db.prepare(
-    `
+  await db.execute({
+    sql: `
       insert into order_modification_request (
         id, order_id, customer_id, request_text, request_items_json
       )
-      values (@id, @orderId, @customerId, @requestText, @requestItemsJson)
+      values (?, ?, ?, ?, ?)
     `,
-  ).run({
-    id,
-    orderId: input.orderId,
-    customerId: input.customerId,
-    requestText,
-    requestItemsJson: JSON.stringify(requestItems),
+    args: [id, input.orderId, input.customerId, requestText, JSON.stringify(requestItems)],
   });
 
-  const request = getModificationRequest(input.orderId, id);
-
+  const request = await getModificationRequest(input.orderId, id);
   if (!request) {
     throw new ApiError(500, "INTERNAL", "No se pudo crear la modificacion");
   }
@@ -1159,12 +1126,12 @@ export function createCustomerModificationRequest(input: {
   return request;
 }
 
-export function approveModificationRequest(input: {
+export async function approveModificationRequest(input: {
   orderId: string;
   requestId: string;
   staffUserId: string;
 }) {
-  const current = getModificationRequestRow(input.orderId, input.requestId);
+  const current = await getModificationRequestRow(input.orderId, input.requestId);
 
   if (!current) {
     throw new ApiError(404, "NOT_FOUND", "Modificacion no encontrada");
@@ -1174,27 +1141,21 @@ export function approveModificationRequest(input: {
     throw new ApiError(409, "CONFLICT", "La modificacion ya fue resuelta");
   }
 
-  getDb()
-    .prepare(
-      `
-        update order_modification_request set
-          status = 'approved',
-          staff_response = 'Aprobada. Acercate al cajero para coordinar la modificacion.',
-          extra_amount_cents = 0,
-          resolved_by_staff_user_id = @staffUserId,
-          resolved_at = datetime('now'),
-          updated_at = datetime('now')
-        where id = @requestId and order_id = @orderId
-      `,
-    )
-    .run({
-      orderId: input.orderId,
-      requestId: input.requestId,
-      staffUserId: input.staffUserId,
-    });
+  await getDb().execute({
+    sql: `
+      update order_modification_request set
+        status = 'approved',
+        staff_response = 'Aprobada. Acercate al cajero para coordinar la modificacion.',
+        extra_amount_cents = 0,
+        resolved_by_staff_user_id = ?,
+        resolved_at = datetime('now'),
+        updated_at = datetime('now')
+      where id = ? and order_id = ?
+    `,
+    args: [input.staffUserId, input.requestId, input.orderId],
+  });
 
-  const request = getModificationRequest(input.orderId, input.requestId);
-
+  const request = await getModificationRequest(input.orderId, input.requestId);
   if (!request) {
     throw new ApiError(500, "INTERNAL", "No se pudo aprobar la modificacion");
   }
@@ -1202,12 +1163,12 @@ export function approveModificationRequest(input: {
   return request;
 }
 
-export function rejectModificationRequest(input: {
+export async function rejectModificationRequest(input: {
   orderId: string;
   requestId: string;
   staffUserId: string;
 }) {
-  const current = getModificationRequestRow(input.orderId, input.requestId);
+  const current = await getModificationRequestRow(input.orderId, input.requestId);
 
   if (!current) {
     throw new ApiError(404, "NOT_FOUND", "Modificacion no encontrada");
@@ -1217,87 +1178,77 @@ export function rejectModificationRequest(input: {
     throw new ApiError(409, "CONFLICT", "La modificacion ya fue resuelta");
   }
 
-  getDb()
-    .prepare(
-      `
-        update order_modification_request set
-          status = 'rejected',
-          staff_response = 'Denegada. Acercate al cajero para revisar alternativas.',
-          resolved_by_staff_user_id = @staffUserId,
-          resolved_at = datetime('now'),
-          updated_at = datetime('now')
-        where id = @requestId and order_id = @orderId
-      `,
-    )
-    .run({
-      orderId: input.orderId,
-      requestId: input.requestId,
-      staffUserId: input.staffUserId,
-    });
+  await getDb().execute({
+    sql: `
+      update order_modification_request set
+        status = 'rejected',
+        staff_response = 'Denegada. Acercate al cajero para revisar alternativas.',
+        resolved_by_staff_user_id = ?,
+        resolved_at = datetime('now'),
+        updated_at = datetime('now')
+      where id = ? and order_id = ?
+    `,
+    args: [input.staffUserId, input.requestId, input.orderId],
+  });
 
   return getModificationRequest(input.orderId, input.requestId);
 }
 
-export function attachModificationPaymentPreference(input: {
+export async function attachModificationPaymentPreference(input: {
   requestId: string;
   preferenceId: string;
   checkoutUrl: string | null;
-}) {
-  getDb()
-    .prepare(
-      `
-        update order_modification_request set
-          mp_preference_id = @preferenceId,
-          mp_checkout_url = @checkoutUrl,
-          updated_at = datetime('now')
-        where id = @requestId
-      `,
-    )
-    .run(input);
+}): Promise<void> {
+  await getDb().execute({
+    sql: `
+      update order_modification_request set
+        mp_preference_id = ?,
+        mp_checkout_url = ?,
+        updated_at = datetime('now')
+      where id = ?
+    `,
+    args: [input.preferenceId, input.checkoutUrl, input.requestId],
+  });
 }
 
-export function attachMercadoPagoPreference(orderId: string, preferenceId: string) {
-  getDb()
-    .prepare(
-      `
-        update customer_order set
-          mp_preference_id = @preferenceId,
-          updated_at = datetime('now')
-        where id = @orderId
-      `,
-    )
-    .run({ orderId, preferenceId });
+export async function attachMercadoPagoPreference(
+  orderId: string,
+  preferenceId: string,
+): Promise<void> {
+  await getDb().execute({
+    sql: `
+      update customer_order set
+        mp_preference_id = ?,
+        updated_at = datetime('now')
+      where id = ?
+    `,
+    args: [preferenceId, orderId],
+  });
 }
 
-export function markOrderPaymentFromMercadoPago(input: {
+export async function markOrderPaymentFromMercadoPago(input: {
   orderId: string;
   paymentId: string;
   paymentStatus: "approved" | "rejected" | "cancelled" | "pending";
 }) {
   const approved = input.paymentStatus === "approved";
 
-  getDb()
-    .prepare(
-      `
-        update customer_order set
-          payment_status = @paymentStatus,
-          mp_payment_id = @paymentId,
-          paid_at = case when @approved = 1 then coalesce(paid_at, datetime('now')) else paid_at end,
-          updated_at = datetime('now')
-        where id = @orderId
-      `,
-    )
-    .run({
-      orderId: input.orderId,
-      paymentId: input.paymentId,
-      paymentStatus: input.paymentStatus,
-      approved: approved ? 1 : 0,
-    });
+  await getDb().execute({
+    sql: `
+      update customer_order set
+        payment_status = ?,
+        mp_payment_id = ?,
+        paid_at = case when ? = 1 then coalesce(paid_at, datetime('now')) else paid_at end,
+        updated_at = datetime('now')
+      where id = ?
+    `,
+    args: [input.paymentStatus, input.paymentId, approved ? 1 : 0, input.orderId],
+  });
 
   return getStaffOrderById(input.orderId);
 }
 
-export function markModificationPaymentFromMercadoPago(input: {
+export async function markModificationPaymentFromMercadoPago(input: {
   requestId: string;
   paymentId: string;
   paymentStatus: "approved" | "rejected" | "cancelled" | "pending";
@@ -1311,104 +1262,89 @@ export function markModificationPaymentFromMercadoPago(input: {
         ? "extra_payment_rejected"
         : "extra_payment_pending";
 
-  const transaction = db.transaction(() => {
-    const current = db
-      .prepare<{ requestId: string }, OrderModificationRequestRow>(
-        "select * from order_modification_request where id = @requestId",
-      )
-      .get({ requestId: input.requestId });
+  const currentResult = await db.execute({
+    sql: "select * from order_modification_request where id = ?",
+    args: [input.requestId],
+  });
+  const current = currentResult.rows[0] as unknown as OrderModificationRequestRow | undefined;
 
-    if (!current) {
-      throw new ApiError(404, "NOT_FOUND", "Modificacion no encontrada");
-    }
+  if (!current) {
+    throw new ApiError(404, "NOT_FOUND", "Modificacion no encontrada");
+  }
 
-    const shouldApplyExtra =
-      approved && current.status === "extra_payment_pending" && !current.paid_at;
+  const shouldApplyExtra =
+    approved && current.status === "extra_payment_pending" && !current.paid_at;
 
-    db.prepare(
-      `
-        update order_modification_request set
-          status = @status,
-          mp_payment_id = @paymentId,
-          paid_at = case when @approved = 1 then coalesce(paid_at, datetime('now')) else paid_at end,
-          updated_at = datetime('now')
-        where id = @requestId
-      `,
-    ).run({
-      requestId: input.requestId,
-      paymentId: input.paymentId,
-      status: nextStatus,
-      approved: approved ? 1 : 0,
-    });
-
-    if (shouldApplyExtra) {
-      db.prepare(
-        `
-          update customer_order set
-            subtotal_cents = subtotal_cents + @extraAmountCents,
-            total_cents = total_cents + @extraAmountCents,
-            updated_at = datetime('now')
-          where id = @orderId
-        `,
-      ).run({
-        orderId: current.order_id,
-        extraAmountCents: current.extra_amount_cents,
-      });
-    }
-
-    return getModificationRequest(current.order_id, input.requestId);
+  await db.execute({
+    sql: `
+      update order_modification_request set
+        status = ?,
+        mp_payment_id = ?,
+        paid_at = case when ? = 1 then coalesce(paid_at, datetime('now')) else paid_at end,
+        updated_at = datetime('now')
+      where id = ?
+    `,
+    args: [nextStatus, input.paymentId, approved ? 1 : 0, input.requestId],
   });
 
-  return transaction();
+  if (shouldApplyExtra) {
+    await db.execute({
+      sql: `
+        update customer_order set
+          subtotal_cents = subtotal_cents + ?,
+          total_cents = total_cents + ?,
+          updated_at = datetime('now')
+        where id = ?
+      `,
+      args: [current.extra_amount_cents, current.extra_amount_cents, current.order_id],
+    });
+  }
+
+  return getModificationRequest(current.order_id, input.requestId);
 }
 
-export function insertPaymentWebhookEvent(input: {
+export async function insertPaymentWebhookEvent(input: {
   externalEventId: string;
   eventType: string;
   payloadJson: string;
-}) {
+}): Promise<{ id: string; inserted: boolean }> {
   const db = getDb();
   const id = randomUUID();
 
   try {
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         insert into payment_webhook_event (
           id, provider, external_event_id, event_type, payload_json
         )
-        values (@id, 'mercado_pago', @externalEventId, @eventType, @payloadJson)
+        values (?, 'mercado_pago', ?, ?, ?)
       `,
-    ).run({
-      id,
-      externalEventId: input.externalEventId,
-      eventType: input.eventType,
-      payloadJson: input.payloadJson,
+      args: [id, input.externalEventId, input.eventType, input.payloadJson],
     });
 
     return { id, inserted: true };
   } catch {
-    const existing = db
-      .prepare<{ externalEventId: string }, PaymentWebhookEventRow>(
-        `
-          select id
-          from payment_webhook_event
-          where provider = 'mercado_pago' and external_event_id = @externalEventId
-        `,
-      )
-      .get({ externalEventId: input.externalEventId });
+    const existingResult = await db.execute({
+      sql: `
+        select id
+        from payment_webhook_event
+        where provider = 'mercado_pago' and external_event_id = ?
+      `,
+      args: [input.externalEventId],
+    });
+    const existing = existingResult.rows[0] as unknown as PaymentWebhookEventRow | undefined;
 
     return { id: existing?.id ?? id, inserted: false };
   }
 }
 
-export function markPaymentWebhookEventProcessed(id: string) {
-  getDb()
-    .prepare(
-      `
-        update payment_webhook_event set
-          processed_at = datetime('now')
-        where id = @id
-      `,
-    )
-    .run({ id });
+export async function markPaymentWebhookEventProcessed(id: string): Promise<void> {
+  await getDb().execute({
+    sql: `
+      update payment_webhook_event set
+        processed_at = datetime('now')
+      where id = ?
+    `,
+    args: [id],
+  });
 }

@@ -1,36 +1,31 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { CUSTOMER_SESSION_COOKIE, signCustomerSession } from "@/lib/auth/customer-jwt";
 import { verifyHandoffToken } from "@/lib/auth/handoff-token";
 import { getCustomerOrderById } from "@/lib/data/orders";
 
-type Props = {
-  searchParams: Promise<{ ticket?: string; token?: string }>;
-};
-
-export default async function HandoffPage({ searchParams }: Props) {
-  const { ticket, token } = await searchParams;
+export async function GET(req: NextRequest) {
+  const ticket = req.nextUrl.searchParams.get("ticket");
+  const token = req.nextUrl.searchParams.get("token");
 
   if (!ticket || !token) {
-    redirect("/menu?handoff=invalid");
+    return NextResponse.redirect(new URL("/menu?handoff=invalid", req.url));
   }
 
   let payload;
   try {
     payload = await verifyHandoffToken(token);
   } catch {
-    redirect("/menu?handoff=expired");
+    return NextResponse.redirect(new URL("/menu?handoff=expired", req.url));
   }
 
   if (payload.ticketId !== ticket) {
-    redirect("/menu?handoff=mismatch");
+    return NextResponse.redirect(new URL("/menu?handoff=mismatch", req.url));
   }
 
-  // Verify the order still exists, belongs to this customer, and is still active.
-  const order = getCustomerOrderById(payload.customerId, ticket);
+  const order = await getCustomerOrderById(payload.customerId, ticket);
   if (!order || order.status === "cancelled" || order.status === "delivered" || order.pickedUpAt) {
-    redirect("/menu?handoff=expired");
+    return NextResponse.redirect(new URL("/menu?handoff=expired", req.url));
   }
 
   const sessionToken = await signCustomerSession({
@@ -39,8 +34,8 @@ export default async function HandoffPage({ searchParams }: Props) {
     customerPhone: payload.customerPhone,
   });
 
-  const cookieStore = await cookies();
-  cookieStore.set(CUSTOMER_SESSION_COOKIE, sessionToken, {
+  const response = NextResponse.redirect(new URL(`/ticket/${ticket}`, req.url));
+  response.cookies.set(CUSTOMER_SESSION_COOKIE, sessionToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -48,5 +43,5 @@ export default async function HandoffPage({ searchParams }: Props) {
     maxAge: 60 * 60 * 24 * 30,
   });
 
-  redirect(`/ticket/${ticket}`);
+  return response;
 }

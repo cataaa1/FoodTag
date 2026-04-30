@@ -18,7 +18,7 @@ export async function GET() {
       return NextResponse.json({ customer: null });
     }
 
-    const customer = getCustomerById(session.customerId);
+    const customer = await getCustomerById(session.customerId);
     return NextResponse.json({ customer });
   } catch (error) {
     return handleRouteError(error);
@@ -28,7 +28,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await parseJsonBody(request, customerSessionSchema);
-    const customer = upsertCustomer(body);
+    const customer = await upsertCustomer(body);
     const token = await signCustomerSession({
       customerId: customer.id,
       customerName: customer.name,

@@ -14,7 +14,7 @@ export async function POST(
   try {
     await requireStaffPermission("orders.advance");
     const { id } = parseParams(await context.params, orderIdParamSchema);
-    const order = advanceStaffOrder(id);
+    const order = await advanceStaffOrder(id);
 
     if (order?.status === "ready") {
       void sendPushToOrder(id, {

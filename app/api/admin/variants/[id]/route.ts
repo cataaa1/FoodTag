@@ -33,41 +33,42 @@ export async function PATCH(
     const params = parseParams(await context.params, idParamSchema);
     const body = await parseJsonBody(request, variantUpdateSchema);
     const db = getDb();
-    const current = db
-      .prepare<{ id: string }, VariantRow>("select * from menu_variant where id = @id")
-      .get({ id: params.id });
+
+    const currentResult = await db.execute({
+      sql: "select * from menu_variant where id = ?",
+      args: [params.id],
+    });
+    const current = currentResult.rows[0] as unknown as VariantRow | undefined;
 
     if (!current) {
       throw new ApiError(404, "NOT_FOUND", "Variante no encontrada");
     }
 
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         update menu_variant set
-          menu_item_id = @menuItemId,
-          name = @name,
-          price_cents = @priceCents,
-          available = @available,
-          position = @position
-        where id = @id
+          menu_item_id = ?,
+          name = ?,
+          price_cents = ?,
+          available = ?,
+          position = ?
+        where id = ?
       `,
-    ).run({
-      id: params.id,
-      menuItemId: body.menuItemId ?? current.menu_item_id,
-      name: body.name ?? current.name,
-      priceCents: body.priceCents ?? current.price_cents,
-      available:
-        body.available === undefined
-          ? current.available
-          : body.available
-            ? 1
-            : 0,
-      position: body.position ?? current.position,
+      args: [
+        body.menuItemId ?? current.menu_item_id,
+        body.name ?? current.name,
+        body.priceCents ?? current.price_cents,
+        body.available === undefined ? current.available : body.available ? 1 : 0,
+        body.position ?? current.position,
+        params.id,
+      ],
     });
 
-    const variant = db
-      .prepare<{ id: string }, VariantRow>("select * from menu_variant where id = @id")
-      .get({ id: params.id });
+    const variantResult = await db.execute({
+      sql: "select * from menu_variant where id = ?",
+      args: [params.id],
+    });
+    const variant = variantResult.rows[0] as unknown as VariantRow | undefined;
 
     revalidatePath("/menu");
     revalidatePath("/admin");
@@ -87,7 +88,10 @@ export async function DELETE(
     await requireStaffPermission("menu.write");
 
     const params = parseParams(await context.params, idParamSchema);
-    getDb().prepare("delete from menu_variant where id = ?").run(params.id);
+    await getDb().execute({
+      sql: "delete from menu_variant where id = ?",
+      args: [params.id],
+    });
 
     revalidatePath("/menu");
     revalidatePath("/admin");

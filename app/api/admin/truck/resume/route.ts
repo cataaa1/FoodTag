@@ -13,26 +13,23 @@ export async function POST() {
 
     const config = await getTruckConfig();
 
-    getDb()
-      .prepare(
-        `
-          update truck_config set
-            paused_manual_at = null,
-            paused_reason = null,
-            updated_at = datetime('now')
-          where id = @id
-        `,
-      )
-      .run({ id: config.id });
+    await getDb().execute({
+      sql: `
+        update truck_config set
+          paused_manual_at = null,
+          paused_reason = null,
+          updated_at = datetime('now')
+        where id = ?
+      `,
+      args: [config.id],
+    });
 
-    writeAuditLog({
+    await writeAuditLog({
       actorUserId: context.user.id,
       action: "truck.resumed",
       targetType: "truck_config",
       targetId: config.id,
-      metadata: {
-        paused: false,
-      },
+      metadata: { paused: false },
     });
 
     revalidatePath("/menu");

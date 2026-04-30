@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     const externalEventId = String(body.id ?? `${eventType}:${paymentId}`);
-    const event = insertPaymentWebhookEvent({
+    const event = await insertPaymentWebhookEvent({
       externalEventId,
       eventType,
       payloadJson: rawBody,
@@ -73,20 +73,20 @@ export async function POST(request: NextRequest) {
     const payment = await getMercadoPagoPayment(paymentId);
 
     if (payment.externalReference?.startsWith("mod:")) {
-      markModificationPaymentFromMercadoPago({
+      await markModificationPaymentFromMercadoPago({
         requestId: payment.externalReference.replace("mod:", ""),
         paymentId: payment.id,
         paymentStatus: payment.status,
       });
     } else if (payment.externalReference) {
-      markOrderPaymentFromMercadoPago({
+      await markOrderPaymentFromMercadoPago({
         orderId: payment.externalReference,
         paymentId: payment.id,
         paymentStatus: payment.status,
       });
     }
 
-    markPaymentWebhookEventProcessed(event.id);
+    await markPaymentWebhookEventProcessed(event.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleRouteError(error);

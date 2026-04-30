@@ -13,7 +13,7 @@ export async function POST(
   try {
     await requireStaffPermission("orders.advance");
     const { id } = parseParams(await context.params, orderIdParamSchema);
-    const order = bumpStaffOrder(id);
+    const order = await bumpStaffOrder(id);
 
     return NextResponse.json({ order });
   } catch (error) {

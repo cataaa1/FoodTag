@@ -41,17 +41,15 @@ export async function GET() {
   try {
     await requireStaffPermission("users.manage");
 
-    const users = getDb()
-      .prepare<[], StaffUserRow>(
-        `
-          select staff_user.*, role.name as role_name
-          from staff_user
-          join role on role.id = staff_user.role_id
-          order by staff_user.created_at desc
-        `,
-      )
-      .all()
-      .map(mapStaffUser);
+    const result = await getDb().execute(
+      `
+        select staff_user.*, role.name as role_name
+        from staff_user
+        join role on role.id = staff_user.role_id
+        order by staff_user.created_at desc
+      `,
+    );
+    const users = (result.rows as unknown as StaffUserRow[]).map(mapStaffUser);
 
     return NextResponse.json({ users });
   } catch (error) {
@@ -65,31 +63,28 @@ export async function POST(request: Request) {
     const body = await parseJsonBody(request, staffUserCreateSchema);
     const db = getDb();
     const id = randomUUID();
-    const role = db
-      .prepare<{ id: string }, RoleRow>("select id, name from role where id = @id")
-      .get({ id: body.roleId });
+
+    const roleResult = await db.execute({
+      sql: "select id, name from role where id = ?",
+      args: [body.roleId],
+    });
+    const role = roleResult.rows[0] as unknown as RoleRow | undefined;
 
     if (!role) {
       throw new ApiError(400, "INVALID_INPUT", "El rol elegido ya no existe");
     }
 
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         insert into staff_user (
           id, email, full_name, password_hash, role_id, active
         )
-        values (@id, @email, @fullName, @passwordHash, @roleId, @active)
+        values (?, ?, ?, ?, ?, ?)
       `,
-    ).run({
-      id,
-      email: body.email,
-      fullName: body.fullName,
-      passwordHash: hashPassword(body.password),
-      roleId: body.roleId,
-      active: body.active ? 1 : 0,
+      args: [id, body.email, body.fullName, hashPassword(body.password), body.roleId, body.active ? 1 : 0],
     });
 
-    writeAuditLog({
+    await writeAuditLog({
       actorUserId: context.user.id,
       action: "staff-user.created",
       targetType: "staff_user",

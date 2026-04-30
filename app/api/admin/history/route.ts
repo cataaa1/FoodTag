@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 
 import { handleRouteError } from "@/lib/api/errors";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
@@ -9,7 +9,7 @@ export async function GET() {
     await requireStaffPermission("users.manage");
 
     return NextResponse.json({
-      entries: listAuditLog(),
+      entries: await listAuditLog(),
     });
   } catch (error) {
     return handleRouteError(error);

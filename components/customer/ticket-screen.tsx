@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { InstallPwaBanner } from "@/components/customer/install-pwa-banner";
+import { PushPromptIos } from "@/components/customer/push-prompt-ios";
 import { PhoneShell, PrimaryPhoneButton } from "@/components/customer/phone-shell";
 import type { CustomerOrder, MenuCategoryWithItems, TruckStatus } from "@/lib/types/domain";
 import { playBeeperSound } from "@/lib/utils/beeper";
@@ -664,6 +665,13 @@ export function TicketScreen({ orderId, vapidPublicKey }: { orderId: string; vap
       </div>
       {vapidPublicKey ? (
         <InstallPwaBanner
+          accentColor={accentColor}
+          orderId={orderId}
+          vapidPublicKey={vapidPublicKey}
+        />
+      ) : null}
+      {vapidPublicKey ? (
+        <PushPromptIos
           accentColor={accentColor}
           orderId={orderId}
           vapidPublicKey={vapidPublicKey}

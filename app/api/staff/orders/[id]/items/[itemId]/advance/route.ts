@@ -17,7 +17,7 @@ export async function POST(
       await context.params,
       orderItemIdParamSchema,
     );
-    const order = advanceStaffOrderItem(id, itemId);
+    const order = await advanceStaffOrderItem(id, itemId);
 
     if (order?.status === "ready") {
       void sendPushToOrder(id, {

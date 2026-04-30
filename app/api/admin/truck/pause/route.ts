@@ -16,31 +16,24 @@ export async function POST(request: Request) {
     const body = await parseJsonBody(request, pauseTruckSchema);
     const config = await getTruckConfig();
 
-    getDb()
-      .prepare(
-        `
-          update truck_config set
-            paused_manual_at = @pausedManualAt,
-            paused_reason = @pausedReason,
-            updated_at = datetime('now')
-          where id = @id
-        `,
-      )
-      .run({
-        id: config.id,
-        pausedManualAt: new Date().toISOString(),
-        pausedReason: body.reason,
-      });
+    await getDb().execute({
+      sql: `
+        update truck_config set
+          paused_manual_at = ?,
+          paused_reason = ?,
+          updated_at = datetime('now')
+        where id = ?
+      `,
+      args: [new Date().toISOString(), body.reason, config.id],
+    });
 
-    writeAuditLog({
+    await writeAuditLog({
       actorUserId: context.user.id,
       action: "truck.paused",
       targetType: "truck_config",
       targetId: config.id,
       reason: body.reason,
-      metadata: {
-        paused: true,
-      },
+      metadata: { paused: true },
     });
 
     revalidatePath("/menu");

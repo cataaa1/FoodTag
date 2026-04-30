@@ -36,43 +36,43 @@ export async function PATCH(
     const params = parseParams(await context.params, idParamSchema);
     const body = await parseJsonBody(request, categoryUpdateSchema);
     const db = getDb();
-    const current = db
-      .prepare<{ id: string }, CategoryRow>("select * from category where id = @id")
-      .get({ id: params.id });
+    const currentResult = await db.execute({
+      sql: "select * from category where id = ?",
+      args: [params.id],
+    });
+    const current = currentResult.rows[0] as unknown as CategoryRow | undefined;
 
     if (!current) {
       throw new ApiError(404, "NOT_FOUND", "Categoría no encontrada");
     }
 
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         update category set
-          name = @name,
-          position = @position,
-          visible = @visible
-        where id = @id
+          name = ?,
+          position = ?,
+          visible = ?
+        where id = ?
       `,
-    ).run({
-      id: params.id,
-      name: body.name ?? current.name,
-      position: body.position ?? current.position,
-      visible:
-        body.visible === undefined
-          ? current.visible
-          : body.visible
-            ? 1
-            : 0,
+      args: [
+        body.name ?? current.name,
+        body.position ?? current.position,
+        body.visible === undefined ? current.visible : body.visible ? 1 : 0,
+        params.id,
+      ],
     });
 
-    const category = db
-      .prepare<{ id: string }, CategoryRow>("select * from category where id = @id")
-      .get({ id: params.id });
+    const categoryResult = await db.execute({
+      sql: "select * from category where id = ?",
+      args: [params.id],
+    });
+    const category = categoryResult.rows[0] as unknown as CategoryRow | undefined;
 
     revalidatePath("/menu");
     revalidatePath("/admin");
     revalidatePath("/admin/menu");
 
-    writeAuditLog({
+    await writeAuditLog({
       actorUserId: staffContext.user.id,
       action: "menu.category.updated",
       targetType: "category",
@@ -98,21 +98,23 @@ export async function DELETE(
 
     const params = parseParams(await context.params, idParamSchema);
     const db = getDb();
-    const current = db
-      .prepare<{ id: string }, CategoryRow>("select * from category where id = @id")
-      .get({ id: params.id });
+    const currentResult = await db.execute({
+      sql: "select * from category where id = ?",
+      args: [params.id],
+    });
+    const current = currentResult.rows[0] as unknown as CategoryRow | undefined;
 
     if (!current) {
       throw new ApiError(404, "NOT_FOUND", "Categoría no encontrada");
     }
 
-    db.prepare("delete from category where id = ?").run(params.id);
+    await db.execute({ sql: "delete from category where id = ?", args: [params.id] });
 
     revalidatePath("/menu");
     revalidatePath("/admin");
     revalidatePath("/admin/menu");
 
-    writeAuditLog({
+    await writeAuditLog({
       actorUserId: staffContext.user.id,
       action: "menu.category.deleted",
       targetType: "category",

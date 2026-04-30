@@ -14,7 +14,7 @@ export async function POST(
     await requireStaffPermission("orders.cancel");
     const { id } = parseParams(await context.params, orderIdParamSchema);
     const body = await parseJsonBody(request, cancelOrderSchema);
-    const order = cancelStaffOrder(id, body.reason);
+    const order = await cancelStaffOrder(id, body.reason);
 
     return NextResponse.json({ order });
   } catch (error) {
