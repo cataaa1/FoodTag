@@ -104,7 +104,7 @@ function getWeekdayInTimezone(timezone: string) {
   return weekdayIndex === -1 ? 0 : weekdayIndex;
 }
 
-function parseSqliteDate(value: string | null) {
+function parseDbDate(value: string | null) {
   if (!value) {
     return null;
   }
@@ -160,8 +160,8 @@ function getRecentServiceDates(timezone: string, totalDays: number) {
 }
 
 function getPreparationSeconds(order: DashboardOrderRow) {
-  const createdAt = parseSqliteDate(order.created_at);
-  const readyAt = parseSqliteDate(order.ready_at);
+  const createdAt = parseDbDate(order.created_at);
+  const readyAt = parseDbDate(order.ready_at);
 
   if (!createdAt || !readyAt) {
     return null;
@@ -246,7 +246,7 @@ export async function getDashboardToday(): Promise<DashboardToday> {
     .filter((value): value is number => value !== null);
 
   orderRows.forEach((order) => {
-    const createdAt = parseSqliteDate(order.created_at);
+    const createdAt = parseDbDate(order.created_at);
 
     if (!createdAt) {
       return;

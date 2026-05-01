@@ -193,9 +193,12 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
     if (!resolvedCustomer) return;
     try {
       const pendingOrderId = localStorage.getItem("foodtag-pending-order-id");
-      if (pendingOrderId) {
+      const isValidId = pendingOrderId && /^[0-9a-f-]{36}$/i.test(pendingOrderId);
+      if (isValidId) {
         localStorage.removeItem("foodtag-pending-order-id");
         router.replace(`/ticket/${pendingOrderId}`);
+      } else if (pendingOrderId) {
+        localStorage.removeItem("foodtag-pending-order-id");
       }
     } catch { /* ignorar */ }
   }, [sessionCustomer, sessionQuery.data?.customer, router]);

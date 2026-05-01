@@ -19,7 +19,7 @@ const bodySchema = z.object({
 export async function POST(request: Request) {
   try {
     const body = await parseJsonBody(request, bodySchema);
-    const context = authenticateStaff(body.email, body.password);
+    const context = await authenticateStaff(body.email, body.password);
 
     if (!context) {
       throw new ApiError(401, "UNAUTHORIZED", "Email o contraseña inválidos");

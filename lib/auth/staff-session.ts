@@ -59,6 +59,51 @@ function mapRole(row: RoleRow): Role {
   };
 }
 
+export async function getStaffContextById(staffUserId: string): Promise<StaffContext | null> {
+  const db = getDb();
+
+  const staffResult = await db.execute({
+    sql: "select * from staff_user where id = @id and active = 1",
+    args: { id: staffUserId },
+  });
+  const staffRow = staffResult.rows[0] as unknown as StaffUserRow | undefined;
+
+  if (!staffRow) {
+    return null;
+  }
+
+  const roleResult = await db.execute({
+    sql: "select * from role where id = @id",
+    args: { id: staffRow.role_id },
+  });
+  const roleRow = roleResult.rows[0] as unknown as RoleRow | undefined;
+
+  if (!roleRow) {
+    return null;
+  }
+
+  return {
+    user: mapStaffUser(staffRow),
+    role: mapRole(roleRow),
+  };
+}
+
+export async function authenticateStaff(email: string, password: string): Promise<StaffContext | null> {
+  const db = getDb();
+
+  const staffResult = await db.execute({
+    sql: "select * from staff_user where lower(email) = lower(@email) and active = 1",
+    args: { email },
+  });
+  const staffRow = staffResult.rows[0] as unknown as StaffUserRow | undefined;
+
+  if (!staffRow || !verifyPassword(password, staffRow.password_hash)) {
+    return null;
+  }
+
+  return getStaffContextById(staffRow.id);
+}
+
 export async function getStaffContext(): Promise<StaffContext | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(STAFF_SESSION_COOKIE)?.value;
@@ -73,47 +118,6 @@ export async function getStaffContext(): Promise<StaffContext | null> {
   } catch {
     return null;
   }
-}
-
-export function getStaffContextById(staffUserId: string): StaffContext | null {
-  const db = getDb();
-  const staffRow = db
-    .prepare<{ id: string }, StaffUserRow>(
-      "select * from staff_user where id = @id and active = 1",
-    )
-    .get({ id: staffUserId });
-
-  if (!staffRow) {
-    return null;
-  }
-
-  const roleRow = db
-    .prepare<{ id: string }, RoleRow>("select * from role where id = @id")
-    .get({ id: staffRow.role_id });
-
-  if (!roleRow) {
-    return null;
-  }
-
-  return {
-    user: mapStaffUser(staffRow),
-    role: mapRole(roleRow),
-  };
-}
-
-export function authenticateStaff(email: string, password: string): StaffContext | null {
-  const db = getDb();
-  const staffRow = db
-    .prepare<{ email: string }, StaffUserRow>(
-      "select * from staff_user where lower(email) = lower(@email) and active = 1",
-    )
-    .get({ email });
-
-  if (!staffRow || !verifyPassword(password, staffRow.password_hash)) {
-    return null;
-  }
-
-  return getStaffContextById(staffRow.id);
 }
 
 export async function requireStaffPermission(permission: PermissionKey) {

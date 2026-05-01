@@ -17,17 +17,7 @@ function shouldShow(orderId: string): boolean {
   const subscribed = !!localStorage.getItem(SUBSCRIBED_KEY(orderId));
   const dismissed = !!localStorage.getItem(DISMISSED_KEY(orderId));
 
-  alert(
-    `[FoodTag Push Debug]\n` +
-    `standalone: ${isStandalone} (raw: ${(navigator as Navigator & { standalone?: boolean }).standalone})\n` +
-    `isIos: ${isIos}\n` +
-    `hasApi: ${hasApi}\n` +
-    `permission: ${permission}\n` +
-    `subscribed: ${subscribed}\n` +
-    `dismissed: ${dismissed}`,
-  );
-
-  if (!isStandalone) return false;
+if (!isStandalone) return false;
   if (!isIos) return false;
   if (!hasApi) return false;
   if (permission !== "default") return false;

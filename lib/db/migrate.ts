@@ -27,11 +27,14 @@ export async function migrateDb() {
 
     const migration = readFileSync(path.join(migrationsPath, file), "utf8");
 
+    const statements = migration
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((s) => ({ sql: s, args: [] as never[] }));
+
     await db.batch(
-      [
-        { sql: migration, args: [] },
-        { sql: "insert into _migrations (filename) values (?)", args: [file] },
-      ],
+      [...statements, { sql: "insert into _migrations (filename) values (?)", args: [file] }],
       "write",
     );
   }

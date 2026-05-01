@@ -9,91 +9,86 @@ import { migrateDb } from "../lib/db/migrate";
 
 loadEnv({ path: ".env.local" });
 
-function upsertRole(name: string, permissions: readonly string[]) {
+async function upsertRole(name: string, permissions: readonly string[]) {
   const db = getDb();
-  const existing = db
-    .prepare<{ name: string }, { id: string }>("select id from role where name = @name")
-    .get({ name });
+  const result = await db.execute({
+    sql: "select id from role where name = @name",
+    args: { name },
+  });
+  const existing = result.rows[0] as { id: string } | undefined;
   const id = existing?.id ?? randomUUID();
 
-  db.prepare(
-    `
+  await db.execute({
+    sql: `
       insert into role (id, name, is_system, permissions_json)
       values (@id, @name, 1, @permissionsJson)
       on conflict(name) do update set
         is_system = excluded.is_system,
         permissions_json = excluded.permissions_json
     `,
-  ).run({
-    id,
-    name,
-    permissionsJson: JSON.stringify(permissions),
+    args: { id, name, permissionsJson: JSON.stringify(permissions) },
   });
 
   return id;
 }
 
-function seedTruckConfig() {
+async function seedTruckConfig() {
   const db = getDb();
-  const existing = db
-    .prepare<[], { id: string }>("select id from truck_config limit 1")
-    .get();
+  const result = await db.execute("select id from truck_config limit 1");
+  const existing = result.rows[0] as { id: string } | undefined;
 
   if (existing) {
     return existing.id;
   }
 
   const id = randomUUID();
-  db.prepare(
-    `
+  await db.execute({
+    sql: `
       insert into truck_config (
         id, name, primary_color, timezone, tip_defaults_json, beep_sound_id
       )
       values (@id, @name, @primaryColor, @timezone, @tipDefaultsJson, @beepSoundId)
     `,
-  ).run({
-    id,
-    name: "El Smash del Barrio",
-    primaryColor: "#F97316",
-    timezone: "America/Argentina/Buenos_Aires",
-    tipDefaultsJson: JSON.stringify([0, 5, 10, 15]),
-    beepSoundId: "classic",
+    args: {
+      id,
+      name: "El Smash del Barrio",
+      primaryColor: "#F97316",
+      timezone: "America/Argentina/Buenos_Aires",
+      tipDefaultsJson: JSON.stringify([0, 5, 10, 15]),
+      beepSoundId: "classic",
+    },
   });
 
   return id;
 }
 
-function seedTruckProfile(truckConfigId: string) {
+async function seedTruckProfile(truckConfigId: string) {
   const db = getDb();
-  const existing = db
-    .prepare<{ truckConfigId: string }, { id: string }>(
-      "select id from truck_profile where truck_config_id = @truckConfigId",
-    )
-    .get({ truckConfigId });
+  const result = await db.execute({
+    sql: "select id from truck_profile where truck_config_id = @truckConfigId",
+    args: { truckConfigId },
+  });
 
-  if (existing) {
-    return;
-  }
+  if (result.rows.length > 0) return;
 
-  db.prepare(
-    `
+  await db.execute({
+    sql: `
       insert into truck_profile (
         id, truck_config_id, address, public_tagline, instagram_handle
       )
-      values (
-        @id, @truckConfigId, @address, @publicTagline, @instagramHandle
-      )
+      values (@id, @truckConfigId, @address, @publicTagline, @instagramHandle)
     `,
-  ).run({
-    id: randomUUID(),
-    truckConfigId,
-    address: "Av. Corrientes 1500",
-    publicTagline: "Food Truck · Av. Corrientes 1500",
-    instagramHandle: "@foodtag",
+    args: {
+      id: randomUUID(),
+      truckConfigId,
+      address: "Av. Corrientes 1500",
+      publicTagline: "Food Truck · Av. Corrientes 1500",
+      instagramHandle: "@foodtag",
+    },
   });
 }
 
-function seedOpeningHours() {
+async function seedOpeningHours() {
   const db = getDb();
   const hours = [
     { weekday: 0, opensAt: null, closesAt: null, closed: 1 },
@@ -105,40 +100,36 @@ function seedOpeningHours() {
     { weekday: 6, opensAt: "18:00:00", closesAt: "23:59:00", closed: 0 },
   ];
 
-  const statement = db.prepare(
-    `
-      insert into opening_hours (id, weekday, opens_at, closes_at, closed)
-      values (@id, @weekday, @opensAt, @closesAt, @closed)
-      on conflict(weekday) do update set
-        opens_at = excluded.opens_at,
-        closes_at = excluded.closes_at,
-        closed = excluded.closed
-    `,
-  );
-
-  const transaction = db.transaction(() => {
-    hours.forEach((entry) => {
-      statement.run({ id: randomUUID(), ...entry });
+  for (const entry of hours) {
+    await db.execute({
+      sql: `
+        insert into opening_hours (id, weekday, opens_at, closes_at, closed)
+        values (@id, @weekday, @opensAt, @closesAt, @closed)
+        on conflict(weekday) do update set
+          opens_at = excluded.opens_at,
+          closes_at = excluded.closes_at,
+          closed = excluded.closed
+      `,
+      args: { id: randomUUID(), ...entry },
     });
-  });
-
-  transaction();
+  }
 }
 
-function seedAdmin(adminRoleId: string) {
+async function seedAdmin(adminRoleId: string) {
   const env = getServerEnv();
   const db = getDb();
   const email = env.SEED_ADMIN_EMAIL ?? "admin@foodtag.ar";
   const password = env.SEED_ADMIN_PASSWORD ?? "ChangeMe123!";
   const fullName = env.SEED_ADMIN_FULL_NAME ?? "Admin FoodTag";
-  const existing = db
-    .prepare<{ email: string }, { id: string }>(
-      "select id from staff_user where email = @email",
-    )
-    .get({ email });
 
-  db.prepare(
-    `
+  const result = await db.execute({
+    sql: "select id from staff_user where email = @email",
+    args: { email },
+  });
+  const existing = result.rows[0] as { id: string } | undefined;
+
+  await db.execute({
+    sql: `
       insert into staff_user (
         id, email, full_name, password_hash, role_id, active
       )
@@ -148,12 +139,13 @@ function seedAdmin(adminRoleId: string) {
         role_id = excluded.role_id,
         active = 1
     `,
-  ).run({
-    id: existing?.id ?? randomUUID(),
-    email,
-    fullName,
-    passwordHash: hashPassword(password),
-    roleId: adminRoleId,
+    args: {
+      id: existing?.id ?? randomUUID(),
+      email,
+      fullName,
+      passwordHash: hashPassword(password),
+      roleId: adminRoleId,
+    },
   });
 }
 
@@ -309,54 +301,54 @@ const demoMenu: SeedCategory[] = [
   },
 ];
 
-function upsertCategory(category: SeedCategory) {
+async function upsertCategory(category: SeedCategory) {
   const db = getDb();
-  const existing = db
-    .prepare<{ name: string }, { id: string }>("select id from category where name = @name")
-    .get({ name: category.name });
+  const result = await db.execute({
+    sql: "select id from category where name = @name",
+    args: { name: category.name },
+  });
+  const existing = result.rows[0] as { id: string } | undefined;
   const id = existing?.id ?? randomUUID();
 
   if (existing) {
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         update category
         set position = @position, visible = @visible
         where id = @id
       `,
-    ).run({
-      id,
-      position: category.position,
-      visible: category.visible ? 1 : 0,
+      args: { id, position: category.position, visible: category.visible ? 1 : 0 },
     });
   } else {
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         insert into category (id, name, position, visible)
         values (@id, @name, @position, @visible)
       `,
-    ).run({
-      id,
-      name: category.name,
-      position: category.position,
-      visible: category.visible ? 1 : 0,
+      args: {
+        id,
+        name: category.name,
+        position: category.position,
+        visible: category.visible ? 1 : 0,
+      },
     });
   }
 
   return id;
 }
 
-function upsertMenuItem(categoryId: string, item: SeedMenuItem) {
+async function upsertMenuItem(categoryId: string, item: SeedMenuItem) {
   const db = getDb();
-  const existing = db
-    .prepare<{ categoryId: string; name: string }, { id: string }>(
-      "select id from menu_item where category_id = @categoryId and name = @name",
-    )
-    .get({ categoryId, name: item.name });
+  const result = await db.execute({
+    sql: "select id from menu_item where category_id = @categoryId and name = @name",
+    args: { categoryId, name: item.name },
+  });
+  const existing = result.rows[0] as { id: string } | undefined;
   const id = existing?.id ?? randomUUID();
 
   if (existing) {
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         update menu_item
         set
           description = @description,
@@ -367,17 +359,18 @@ function upsertMenuItem(categoryId: string, item: SeedMenuItem) {
           updated_at = datetime('now')
         where id = @id
       `,
-    ).run({
-      id,
-      description: item.description,
-      priceCents: item.priceCents,
-      available: item.available ? 1 : 0,
-      hasVariants: item.hasVariants ? 1 : 0,
-      position: item.position,
+      args: {
+        id,
+        description: item.description,
+        priceCents: item.priceCents,
+        available: item.available ? 1 : 0,
+        hasVariants: item.hasVariants ? 1 : 0,
+        position: item.position,
+      },
     });
   } else {
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         insert into menu_item (
           id, category_id, name, description, price_cents,
           available, has_variants, position
@@ -387,142 +380,138 @@ function upsertMenuItem(categoryId: string, item: SeedMenuItem) {
           @available, @hasVariants, @position
         )
       `,
-    ).run({
-      id,
-      categoryId,
-      name: item.name,
-      description: item.description,
-      priceCents: item.priceCents,
-      available: item.available ? 1 : 0,
-      hasVariants: item.hasVariants ? 1 : 0,
-      position: item.position,
+      args: {
+        id,
+        categoryId,
+        name: item.name,
+        description: item.description,
+        priceCents: item.priceCents,
+        available: item.available ? 1 : 0,
+        hasVariants: item.hasVariants ? 1 : 0,
+        position: item.position,
+      },
     });
   }
 
   return id;
 }
 
-function upsertVariant(
+async function upsertVariant(
   menuItemId: string,
   variant: NonNullable<SeedMenuItem["variants"]>[number],
 ) {
   const db = getDb();
-  const existing = db
-    .prepare<{ menuItemId: string; name: string }, { id: string }>(
-      "select id from menu_variant where menu_item_id = @menuItemId and name = @name",
-    )
-    .get({ menuItemId, name: variant.name });
+  const result = await db.execute({
+    sql: "select id from menu_variant where menu_item_id = @menuItemId and name = @name",
+    args: { menuItemId, name: variant.name },
+  });
+  const existing = result.rows[0] as { id: string } | undefined;
   const id = existing?.id ?? randomUUID();
 
   if (existing) {
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         update menu_variant
         set price_cents = @priceCents, available = @available, position = @position
         where id = @id
       `,
-    ).run({
-      id,
-      priceCents: variant.priceCents,
-      available: variant.available ? 1 : 0,
-      position: variant.position,
+      args: {
+        id,
+        priceCents: variant.priceCents,
+        available: variant.available ? 1 : 0,
+        position: variant.position,
+      },
     });
   } else {
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         insert into menu_variant (
           id, menu_item_id, name, price_cents, available, position
         )
         values (@id, @menuItemId, @name, @priceCents, @available, @position)
       `,
-    ).run({
-      id,
-      menuItemId,
-      name: variant.name,
-      priceCents: variant.priceCents,
-      available: variant.available ? 1 : 0,
-      position: variant.position,
+      args: {
+        id,
+        menuItemId,
+        name: variant.name,
+        priceCents: variant.priceCents,
+        available: variant.available ? 1 : 0,
+        position: variant.position,
+      },
     });
   }
 }
 
-function upsertModifier(
+async function upsertModifier(
   menuItemId: string,
   modifier: NonNullable<SeedMenuItem["modifiers"]>[number],
 ) {
   const db = getDb();
-  const existing = db
-    .prepare<{ menuItemId: string; label: string }, { id: string }>(
-      "select id from menu_item_modifier where menu_item_id = @menuItemId and label = @label",
-    )
-    .get({ menuItemId, label: modifier.label });
+  const result = await db.execute({
+    sql: "select id from menu_item_modifier where menu_item_id = @menuItemId and label = @label",
+    args: { menuItemId, label: modifier.label },
+  });
+  const existing = result.rows[0] as { id: string } | undefined;
   const id = existing?.id ?? randomUUID();
 
   if (existing) {
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         update menu_item_modifier
         set default_checked = @defaultChecked, position = @position
         where id = @id
       `,
-    ).run({
-      id,
-      defaultChecked: modifier.defaultChecked ? 1 : 0,
-      position: modifier.position,
+      args: { id, defaultChecked: modifier.defaultChecked ? 1 : 0, position: modifier.position },
     });
   } else {
-    db.prepare(
-      `
+    await db.execute({
+      sql: `
         insert into menu_item_modifier (
           id, menu_item_id, label, default_checked, position
         )
         values (@id, @menuItemId, @label, @defaultChecked, @position)
       `,
-    ).run({
-      id,
-      menuItemId,
-      label: modifier.label,
-      defaultChecked: modifier.defaultChecked ? 1 : 0,
-      position: modifier.position,
+      args: {
+        id,
+        menuItemId,
+        label: modifier.label,
+        defaultChecked: modifier.defaultChecked ? 1 : 0,
+        position: modifier.position,
+      },
     });
   }
 }
 
-function seedDemoMenu() {
-  const db = getDb();
-  const transaction = db.transaction(() => {
-    demoMenu.forEach((category) => {
-      const categoryId = upsertCategory(category);
+async function seedDemoMenu() {
+  for (const category of demoMenu) {
+    const categoryId = await upsertCategory(category);
 
-      category.items.forEach((item) => {
-        const itemId = upsertMenuItem(categoryId, item);
+    for (const item of category.items) {
+      const itemId = await upsertMenuItem(categoryId, item);
 
-        (item.variants ?? []).forEach((variant) => {
-          upsertVariant(itemId, variant);
-        });
-        (item.modifiers ?? []).forEach((modifier) => {
-          upsertModifier(itemId, modifier);
-        });
-      });
-    });
-  });
-
-  transaction();
+      for (const variant of item.variants ?? []) {
+        await upsertVariant(itemId, variant);
+      }
+      for (const modifier of item.modifiers ?? []) {
+        await upsertModifier(itemId, modifier);
+      }
+    }
+  }
 }
 
 async function main() {
-  migrateDb();
+  await migrateDb();
 
-  const adminRoleId = upsertRole("admin", SYSTEM_ROLES.admin);
-  upsertRole("cajero", SYSTEM_ROLES.cajero);
-  upsertRole("cocina", SYSTEM_ROLES.cocina);
-  const truckConfigId = seedTruckConfig();
-  seedTruckProfile(truckConfigId);
-  seedOpeningHours();
-  seedAdmin(adminRoleId);
-  seedDemoMenu();
+  const adminRoleId = await upsertRole("admin", SYSTEM_ROLES.admin);
+  await upsertRole("cajero", SYSTEM_ROLES.cajero);
+  await upsertRole("cocina", SYSTEM_ROLES.cocina);
+  const truckConfigId = await seedTruckConfig();
+  await seedTruckProfile(truckConfigId);
+  await seedOpeningHours();
+  await seedAdmin(adminRoleId);
+  await seedDemoMenu();
 
-  console.log("SQLite migrado y seed completado con éxito");
+  console.log("Turso DB migrada y seed completado con éxito");
 }
 
 main().catch((error) => {

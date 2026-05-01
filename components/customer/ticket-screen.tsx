@@ -137,6 +137,7 @@ export function TicketScreen({ orderId, vapidPublicKey }: { orderId: string; vap
   // Persist active ticket so the PWA resumes here after being closed/backgrounded.
   // Saved on mount (orderId always known); cleared when order reaches a terminal state.
   useEffect(() => {
+    if (!orderId) return;
     try {
       localStorage.setItem("foodtag-pending-order-id", orderId);
     } catch { /* ignorar */ }

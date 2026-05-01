@@ -41,7 +41,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es-AR" className={`${dmSans.variable} ${dmMono.variable}`}>
-      <body className="antialiased">
+      <body className="antialiased" suppressHydrationWarning>
         <TooltipProvider>
           <QueryProvider>
             <BrandThemeProvider>

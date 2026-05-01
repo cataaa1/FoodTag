@@ -7,7 +7,7 @@ export default async function Home() {
   const session = await getCustomerSession();
 
   if (session) {
-    const activeOrder = getActiveOrderForCustomer(session.customerId);
+    const activeOrder = await getActiveOrderForCustomer(session.customerId);
     if (activeOrder) {
       redirect(`/ticket/${activeOrder.id}`);
     }

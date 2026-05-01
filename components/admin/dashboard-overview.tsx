@@ -364,7 +364,7 @@ export function DashboardOverview() {
               No pudimos cargar el dashboard
             </div>
             <div className="mt-1 text-xs text-[#999]">
-              Revisa permisos, base local SQLite y el estado de los pedidos del dia.
+              Revisa permisos, conexión a Turso y el estado de los pedidos del dia.
             </div>
           </div>
         </div>
