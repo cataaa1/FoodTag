@@ -11,8 +11,8 @@ export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (process.env.NODE_ENV === "production") {
-    throw new ApiError(403, "FORBIDDEN", "Solo disponible en desarrollo");
+  if (process.env.DEV_PAYMENT_BYPASS !== "true") {
+    throw new ApiError(403, "FORBIDDEN", "Solo disponible en modo de prueba");
   }
 
   try {

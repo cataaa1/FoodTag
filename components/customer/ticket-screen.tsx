@@ -378,7 +378,7 @@ export function TicketScreen({ orderId, vapidPublicKey }: { orderId: string; vap
           >
             {cancelMutation.isPending ? "Cancelando..." : "Cancelar pedido"}
           </button>
-          {process.env.NODE_ENV !== "production" ? (
+          {process.env.NEXT_PUBLIC_DEV_PAYMENT_BYPASS === "true" ? (
             <button
               className="mt-1 rounded-full border border-dashed border-[#9a7560] px-4 py-2 text-xs font-bold text-[#9a7560] disabled:opacity-40"
               disabled={devApproveMutation.isPending}
