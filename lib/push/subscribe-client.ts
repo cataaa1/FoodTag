@@ -13,8 +13,17 @@ export function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
   return arr.buffer as ArrayBuffer;
 }
 
+function swReady(timeoutMs = 10_000): Promise<ServiceWorkerRegistration> {
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise<never>((_, reject) =>
+      window.setTimeout(() => reject(new Error("Service worker timeout — recargá la página e intentá de nuevo")), timeoutMs),
+    ),
+  ]);
+}
+
 export async function subscribePush(orderId: string, vapidPublicKey: string): Promise<void> {
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await swReady();
   const existing = await reg.pushManager.getSubscription();
   const sub =
     existing ??

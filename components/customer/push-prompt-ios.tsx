@@ -60,8 +60,9 @@ export function PushPromptIos({ orderId, vapidPublicKey, accentColor }: Props) {
       try { localStorage.setItem(SUBSCRIBED_KEY(orderId), "1"); } catch { /* ignorar */ }
       setStep("done");
       window.setTimeout(() => setVisible(false), 3_000);
-    } catch {
-      setErrorMsg("No pudimos activar las notificaciones. Intentá de nuevo.");
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setErrorMsg(`No pudimos activar las notificaciones: ${detail}`);
       setStep("error");
     }
   }
