@@ -129,11 +129,16 @@ export function TicketScreen({ orderId, vapidPublicKey }: { orderId: string; vap
       await queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] });
     },
   });
+  const [devApproveError, setDevApproveError] = useState<string | null>(null);
   const devApproveMutation = useMutation({
     mutationFn: () =>
       fetchJson(`/api/customer/order/${orderId}/dev-approve`, { method: "POST" }),
     onSuccess: async () => {
+      setDevApproveError(null);
       await queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] });
+    },
+    onError: (error) => {
+      setDevApproveError(error instanceof Error ? error.message : "Error al simular pago");
     },
   });
 
@@ -379,14 +384,21 @@ export function TicketScreen({ orderId, vapidPublicKey }: { orderId: string; vap
             {cancelMutation.isPending ? "Cancelando..." : "Cancelar pedido"}
           </button>
           {process.env.NEXT_PUBLIC_DEV_PAYMENT_BYPASS === "true" ? (
-            <button
-              className="mt-1 rounded-full border border-dashed border-[#9a7560] px-4 py-2 text-xs font-bold text-[#9a7560] disabled:opacity-40"
-              disabled={devApproveMutation.isPending}
-              onClick={() => devApproveMutation.mutate()}
-              type="button"
-            >
-              {devApproveMutation.isPending ? "Simulando..." : "⚡ Simular pago aprobado (dev)"}
-            </button>
+            <>
+              <button
+                className="mt-1 rounded-full border border-dashed border-[#9a7560] px-4 py-2 text-xs font-bold text-[#9a7560] disabled:opacity-40"
+                disabled={devApproveMutation.isPending}
+                onClick={() => devApproveMutation.mutate()}
+                type="button"
+              >
+                {devApproveMutation.isPending ? "Simulando..." : "⚡ Simular pago aprobado (dev)"}
+              </button>
+              {devApproveError ? (
+                <p className="rounded-[12px] border border-[#ffb4a8] bg-[#fff1f0] px-4 py-3 text-xs font-bold text-[#ef4444]">
+                  {devApproveError}
+                </p>
+              ) : null}
+            </>
           ) : null}
         </div>
       </PhoneShell>
