@@ -32,7 +32,7 @@ export async function POST(
       sql: `
         update customer_order set
           payment_status = 'approved',
-          mp_payment_id = 'dev-skip',
+          mp_payment_id = 'dev-' || id,
           paid_at = coalesce(paid_at, datetime('now')),
           updated_at = datetime('now')
         where id = ? and customer_id = ?
