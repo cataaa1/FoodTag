@@ -32,12 +32,12 @@ export async function POST(
       sql: `
         update customer_order set
           payment_status = 'approved',
-          mp_payment_id = 'dev-' || id,
+          mp_payment_id = coalesce(mp_payment_id, ?),
           paid_at = coalesce(paid_at, datetime('now')),
           updated_at = datetime('now')
         where id = ? and customer_id = ?
       `,
-      args: [id, session.customerId],
+      args: [`dev-${id}`, id, session.customerId],
     });
 
     return NextResponse.json({ ok: true });

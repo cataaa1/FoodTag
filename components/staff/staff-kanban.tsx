@@ -12,6 +12,7 @@ import {
   RefreshCw,
   RotateCcw,
   Settings,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -91,9 +92,11 @@ type KitchenTicketActions = {
   accentTextColor: string;
   canAdvance: boolean;
   canApproveMod: boolean;
+  canCancel: boolean;
   canPulse: boolean;
   isAdvancing: boolean;
   isApprovingModification: boolean;
+  isCancelling: boolean;
   isDelivering: boolean;
   isPulsing: boolean;
   isRejectingModification: boolean;
@@ -104,6 +107,7 @@ type KitchenTicketActions = {
     order: StaffOrder,
     request: OrderModificationRequest,
   ) => void;
+  onCancel: (order: StaffOrder, reason: string) => void;
   onDeliver: (order: StaffOrder) => void;
   onPulse: (order: StaffOrder) => void;
   onRejectModification: (
@@ -543,11 +547,31 @@ export function StaffKanban() {
     },
   });
 
+  const cancelMutation = useMutation({
+    mutationFn: ({ order, reason }: { order: StaffOrder; reason: string }) =>
+      fetchJson<{ order: StaffOrder | null }>(
+        `/api/staff/orders/${order.id}/cancel`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason }),
+        },
+      ),
+    onSuccess: async () => {
+      setActionError(null);
+      await refreshOrders();
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : "No pudimos cancelar el pedido");
+    },
+  });
+
   const ticketActions: KitchenTicketActions = {
     accentColor,
     accentTextColor,
     canAdvance,
     canApproveMod,
+    canCancel: hasPermission(permissions, "orders.cancel"),
     canPulse,
     isAdvancing:
       advanceItemMutation.isPending ||
@@ -555,6 +579,7 @@ export function StaffKanban() {
       bumpMutation.isPending ||
       unbumpMutation.isPending,
     isApprovingModification: approveModificationMutation.isPending,
+    isCancelling: cancelMutation.isPending,
     isDelivering: bumpMutation.isPending,
     isPulsing: pulseMutation.isPending,
     isRejectingModification: rejectModificationMutation.isPending,
@@ -563,6 +588,7 @@ export function StaffKanban() {
     onAdvanceItem: (order, item) => advanceItemMutation.mutate({ order, item }),
     onApproveModification: (order, request) =>
       approveModificationMutation.mutate({ order, request }),
+    onCancel: (order, reason) => cancelMutation.mutate({ order, reason }),
     onDeliver: (order) => bumpMutation.mutate(order),
     onPulse: (order) => pulseMutation.mutate(order),
     onRejectModification: (order, request) =>
@@ -944,9 +970,11 @@ function KitchenTicket({
     accentTextColor,
     canAdvance,
     canApproveMod,
+    canCancel,
     canPulse,
     isAdvancing,
     isApprovingModification,
+    isCancelling,
     isDelivering,
     isPulsing,
     isRejectingModification,
@@ -1088,6 +1116,22 @@ function KitchenTicket({
               ? "Retiro confirmado. Sale de cocina en unos segundos."
               : "Entregado. Esperando confirmación del cliente."}
           </p>
+        ) : null}
+
+        {order.status !== "delivered" ? (
+          <ActionButton
+            disabled={!canCancel || isCancelling}
+            icon={<X />}
+            onClick={() => {
+              const reason = window.prompt("¿Motivo de la cancelación?", "Cancelado por el operador");
+              if (reason !== null) {
+                actions.onCancel(order, reason || "Cancelado por el operador");
+              }
+            }}
+            tone="red"
+          >
+            {isCancelling ? "Cancelando..." : "Cancelar pedido"}
+          </ActionButton>
         ) : null}
 
         {pendingModification && disabledByModification ? (
