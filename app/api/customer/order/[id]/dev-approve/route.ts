@@ -11,11 +11,10 @@ export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (process.env.DEV_PAYMENT_BYPASS !== "true") {
-    throw new ApiError(403, "FORBIDDEN", "Solo disponible en modo de prueba");
-  }
-
   try {
+    if (process.env.DEV_PAYMENT_BYPASS !== "true") {
+      throw new ApiError(403, "FORBIDDEN", "Solo disponible en modo de prueba");
+    }
     const session = await requireCustomerSession();
     const { id } = parseParams(await params, customerOrderIdParamSchema);
     const order = await getCustomerOrderById(session.customerId, id);
