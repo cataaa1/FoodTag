@@ -121,6 +121,21 @@ export function TicketScreen({ orderId, vapidPublicKey }: { orderId: string; vap
       );
     },
   });
+  const cancelMutation = useMutation({
+    mutationFn: () =>
+      fetchJson(`/api/customer/order/${orderId}/cancel`, { method: "POST" }),
+    onSuccess: async () => {
+      try { localStorage.removeItem("foodtag-pending-order-id"); } catch { /* ignorar */ }
+      await queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] });
+    },
+  });
+  const devApproveMutation = useMutation({
+    mutationFn: () =>
+      fetchJson(`/api/customer/order/${orderId}/dev-approve`, { method: "POST" }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["customer-order", orderId] });
+    },
+  });
 
   useEffect(() => {
     const timer = window.setInterval(() => setElapsed((value) => value + 1), 1000);
@@ -347,6 +362,31 @@ export function TicketScreen({ orderId, vapidPublicKey }: { orderId: string; vap
             <p className="rounded-[12px] border border-[#ffb4a8] bg-[#fff1f0] px-4 py-3 text-xs font-bold text-[#ef4444]">
               {paymentSyncError}
             </p>
+          ) : null}
+          {cancelMutation.isError ? (
+            <p className="rounded-[12px] border border-[#ffb4a8] bg-[#fff1f0] px-4 py-3 text-xs font-bold text-[#ef4444]">
+              {cancelMutation.error instanceof Error
+                ? cancelMutation.error.message
+                : "No pudimos cancelar el pedido"}
+            </p>
+          ) : null}
+          <button
+            className="mt-2 text-xs font-bold text-[#9a7560] underline underline-offset-2 disabled:opacity-40"
+            disabled={cancelMutation.isPending}
+            onClick={() => cancelMutation.mutate()}
+            type="button"
+          >
+            {cancelMutation.isPending ? "Cancelando..." : "Cancelar pedido"}
+          </button>
+          {process.env.NODE_ENV !== "production" ? (
+            <button
+              className="mt-1 rounded-full border border-dashed border-[#9a7560] px-4 py-2 text-xs font-bold text-[#9a7560] disabled:opacity-40"
+              disabled={devApproveMutation.isPending}
+              onClick={() => devApproveMutation.mutate()}
+              type="button"
+            >
+              {devApproveMutation.isPending ? "Simulando..." : "⚡ Simular pago aprobado (dev)"}
+            </button>
           ) : null}
         </div>
       </PhoneShell>
