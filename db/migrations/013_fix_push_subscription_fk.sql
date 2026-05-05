@@ -1,4 +1,7 @@
-create table if not exists push_subscription (
+drop table if exists beeper_event;
+drop table if exists push_subscription;
+
+create table push_subscription (
   id text primary key,
   order_id text not null references customer_order(id) on delete cascade,
   endpoint text not null unique,
@@ -11,9 +14,9 @@ create table if not exists push_subscription (
   failed_at text
 );
 
-create index if not exists idx_push_subscription_order_id on push_subscription(order_id);
+create index idx_push_subscription_order_id on push_subscription(order_id);
 
-create table if not exists beeper_event (
+create table beeper_event (
   id text primary key,
   order_id text not null references customer_order(id) on delete cascade,
   kind text not null check (kind in ('auto_ready', 'manual_pulse', 'push_sent', 'push_failed')),
@@ -21,4 +24,4 @@ create table if not exists beeper_event (
   metadata_json text
 );
 
-create index if not exists idx_beeper_event_order_id on beeper_event(order_id);
+create index idx_beeper_event_order_id on beeper_event(order_id);
