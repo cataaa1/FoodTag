@@ -12,15 +12,15 @@ function shouldShow(orderId: string): boolean {
 
   const isStandalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const hasApi = "Notification" in window;
-  const permission = hasApi ? Notification.permission : "N/A";
+  const hasApi = "Notification" in window && "PushManager" in window;
+  const permission = hasApi ? Notification.permission : "denied";
   const subscribed = !!localStorage.getItem(SUBSCRIBED_KEY(orderId));
   const dismissed = !!localStorage.getItem(DISMISSED_KEY(orderId));
 
-if (!isStandalone) return false;
+  if (!isStandalone) return false;
   if (!isIos) return false;
   if (!hasApi) return false;
-  if (permission !== "default") return false;
+  if (permission === "denied") return false;
   if (subscribed) return false;
   if (dismissed) return false;
   return true;
@@ -51,7 +51,10 @@ export function PushPromptIos({ orderId, vapidPublicKey, accentColor }: Props) {
   async function handleActivate() {
     setStep("requesting");
     try {
-      const permission = await Notification.requestPermission();
+      let permission = Notification.permission;
+      if (permission === "default") {
+        permission = await Notification.requestPermission();
+      }
       if (permission !== "granted") {
         handleDismiss();
         return;
