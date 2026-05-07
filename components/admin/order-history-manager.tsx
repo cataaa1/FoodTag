@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { AdminShell } from "@/components/admin/admin-shell";
-import type { OrderHistoryItem, OrderHistoryResult } from "@/lib/data/order-history";
+import type { OrderHistoryItem, OrderHistoryResult, OrderHistorySortBy, OrderHistorySortDir } from "@/lib/data/order-history";
 import type { OrderStatus } from "@/lib/types/domain";
 import { formatCurrency } from "@/lib/utils/format";
 import { fetchJson } from "@/lib/utils/http";
@@ -35,7 +35,12 @@ type Filters = {
   maxCents: string;
 };
 
-function buildQuery(filters: Filters, page: number) {
+type SortState = {
+  sortBy: OrderHistorySortBy;
+  sortDir: OrderHistorySortDir;
+};
+
+function buildQuery(filters: Filters, page: number, sort: SortState) {
   const params = new URLSearchParams();
   if (filters.fromDate) params.set("fromDate", filters.fromDate);
   if (filters.toDate) params.set("toDate", filters.toDate);
@@ -45,6 +50,8 @@ function buildQuery(filters: Filters, page: number) {
   if (filters.maxCents) params.set("maxCents", String(Number(filters.maxCents) * 100));
   params.set("page", String(page));
   params.set("pageSize", "25");
+  params.set("sortBy", sort.sortBy);
+  params.set("sortDir", sort.sortDir);
   return params.toString();
 }
 
@@ -67,16 +74,28 @@ const EMPTY_FILTERS: Filters = {
   maxCents: "",
 };
 
+const DEFAULT_SORT: SortState = { sortBy: "date", sortDir: "desc" };
+
 export function OrderHistoryManager() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<Filters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
+
+  function handleSort(col: OrderHistorySortBy) {
+    setSort((prev) =>
+      prev.sortBy === col
+        ? { sortBy: col, sortDir: prev.sortDir === "asc" ? "desc" : "asc" }
+        : { sortBy: col, sortDir: "asc" },
+    );
+    setPage(1);
+  }
 
   const query = useQuery({
-    queryKey: ["admin", "orders-history", appliedFilters, page],
+    queryKey: ["admin", "orders-history", appliedFilters, page, sort],
     queryFn: () =>
       fetchJson<OrderHistoryResult>(
-        `/api/admin/orders/history?${buildQuery(appliedFilters, page)}`,
+        `/api/admin/orders/history?${buildQuery(appliedFilters, page, sort)}`,
       ),
   });
 
@@ -244,12 +263,12 @@ export function OrderHistoryManager() {
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr>
-                    <Th>Ticket</Th>
-                    <Th>Fecha</Th>
-                    <Th>Cliente</Th>
+                    <Th sortKey="ticket" sort={sort} onSort={handleSort}>Ticket</Th>
+                    <Th sortKey="date" sort={sort} onSort={handleSort}>Fecha</Th>
+                    <Th sortKey="customer" sort={sort} onSort={handleSort}>Cliente</Th>
                     <Th>Ítems</Th>
-                    <Th>Total</Th>
-                    <Th>Estado</Th>
+                    <Th sortKey="total" sort={sort} onSort={handleSort}>Total</Th>
+                    <Th sortKey="status" sort={sort} onSort={handleSort}>Estado</Th>
                     <Th>Cobrado</Th>
                   </tr>
                 </thead>
@@ -291,7 +310,35 @@ export function OrderHistoryManager() {
   );
 }
 
-function Th({ children }: { children?: React.ReactNode }) {
+function Th({
+  children,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  children?: React.ReactNode;
+  sortKey?: OrderHistorySortBy;
+  sort?: SortState;
+  onSort?: (col: OrderHistorySortBy) => void;
+}) {
+  const active = sortKey && sort?.sortBy === sortKey;
+  const arrow = active ? (sort!.sortDir === "asc" ? " ↑" : " ↓") : "";
+
+  if (sortKey && onSort) {
+    return (
+      <th className="bg-[#f2f2f2] px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.8px] dark:bg-[#242424]">
+        <button
+          className="flex items-center gap-0.5 transition-colors hover:opacity-80"
+          onClick={() => onSort(sortKey)}
+          style={{ color: active ? "var(--admin-accent)" : "#999" }}
+          type="button"
+        >
+          {children}{arrow}
+        </button>
+      </th>
+    );
+  }
+
   return (
     <th className="bg-[#f2f2f2] px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.8px] text-[#999] dark:bg-[#242424]">
       {children}

@@ -271,11 +271,24 @@ export function MenuManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ available: !item.available }),
       }),
-    onSuccess: async () => {
-      setError(null);
-      await refreshAll();
+    onMutate: async (item: MenuItem) => {
+      await queryClient.cancelQueries({ queryKey: ["admin", "menu-items"] });
+      const previous = queryClient.getQueryData<{ items: MenuItem[] }>(["admin", "menu-items"]);
+      queryClient.setQueryData<{ items: MenuItem[] }>(["admin", "menu-items"], (old) =>
+        old
+          ? { items: old.items.map((i) => (i.id === item.id ? { ...i, available: !item.available } : i)) }
+          : old,
+      );
+      return { previous };
     },
-    onError: (mutationError) => {
+    onSuccess: () => {
+      setError(null);
+      void refreshAll();
+    },
+    onError: (mutationError, _item, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["admin", "menu-items"], context.previous);
+      }
       setFeedback(null);
       setError(
         mutationError instanceof Error

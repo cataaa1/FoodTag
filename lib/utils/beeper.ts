@@ -30,8 +30,23 @@ const BEEP_PATTERNS: Record<string, BeepPattern> = {
   ],
 } satisfies Record<string, BeepPattern>;
 
+export const CUSTOM_SOUND_STORAGE_KEY = "beeper-custom-sound-v1";
+
 export function playBeeperSound(soundId: string) {
   try {
+    if (soundId === "custom") {
+      const dataUrl = typeof localStorage !== "undefined"
+        ? localStorage.getItem(CUSTOM_SOUND_STORAGE_KEY)
+        : null;
+      if (dataUrl) {
+        const audio = new Audio(dataUrl);
+        audio.volume = 0.8;
+        void audio.play();
+        return;
+      }
+      // Fall through to classic if no custom sound stored
+    }
+
     const audio = new AudioContext();
     const defaultPattern = BEEP_PATTERNS.classic;
     const pattern = (BEEP_PATTERNS[soundId] ?? defaultPattern) as BeepPattern;

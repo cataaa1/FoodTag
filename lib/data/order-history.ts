@@ -1,6 +1,9 @@
 import { getDb } from "@/lib/db/client";
 import type { OrderStatus } from "@/lib/types/domain";
 
+export type OrderHistorySortBy = "ticket" | "date" | "customer" | "total" | "status";
+export type OrderHistorySortDir = "asc" | "desc";
+
 export type OrderHistoryFilters = {
   fromDate?: string;
   toDate?: string;
@@ -10,6 +13,8 @@ export type OrderHistoryFilters = {
   maxCents?: number;
   page?: number;
   pageSize?: number;
+  sortBy?: OrderHistorySortBy;
+  sortDir?: OrderHistorySortDir;
 };
 
 export type OrderHistoryItem = {
@@ -62,6 +67,14 @@ export type OrderHistoryResult = {
   totalPages: number;
 };
 
+const SORT_COLUMN_MAP: Record<OrderHistorySortBy, string> = {
+  ticket: "co.ticket_number",
+  date: "co.created_at",
+  customer: "c.name",
+  total: "co.total_cents",
+  status: "co.status",
+};
+
 export async function getOrderHistory(filters: OrderHistoryFilters = {}): Promise<OrderHistoryResult> {
   const db = getDb();
   const {
@@ -73,6 +86,8 @@ export async function getOrderHistory(filters: OrderHistoryFilters = {}): Promis
     maxCents,
     page = 1,
     pageSize = 25,
+    sortBy = "date",
+    sortDir = "desc",
   } = filters;
 
   const conditions: string[] = ["1=1"];
@@ -107,6 +122,8 @@ export async function getOrderHistory(filters: OrderHistoryFilters = {}): Promis
   }
 
   const where = conditions.join(" and ");
+  const orderCol = SORT_COLUMN_MAP[sortBy];
+  const orderDir = sortDir === "asc" ? "asc" : "desc";
   const offset = (page - 1) * pageSize;
 
   const [countResult, rowsResult] = await Promise.all([
@@ -142,7 +159,7 @@ export async function getOrderHistory(filters: OrderHistoryFilters = {}): Promis
              left join order_item oi on oi.order_id = co.id
              where ${where}
              group by co.id
-             order by co.created_at desc
+             order by ${orderCol} ${orderDir}
              limit ? offset ?`,
       args: [...args, pageSize, offset],
     }),

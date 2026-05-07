@@ -565,12 +565,13 @@ export function TicketScreen({ orderId, vapidPublicKey }: { orderId: string; vap
           </p>
         </div>
 
+        {truckStatusQuery.data?.allowOrderModifications !== false ? (
         <div className="mb-4 w-full rounded-[18px] border border-[#f0ddd0] bg-white px-4 py-4 text-left shadow-[0_10px_30px_rgba(63,43,27,0.08)]">
           <p className="mb-1 text-[13px] font-black text-[#2b1b12]">
             Modificar productos
           </p>
           <p className="mb-3 text-xs leading-5 text-[#9a7560]">
-            PodÃ©s ajustar opciones mientras el pedido siga pendiente y el truck lo tenga habilitado.
+            Podés ajustar opciones mientras el pedido siga pendiente y el truck lo tenga habilitado.
           </p>
           {order?.modificationRequests.length ? (
             <div className="mb-3 space-y-2">
@@ -608,11 +609,9 @@ export function TicketScreen({ orderId, vapidPublicKey }: { orderId: string; vap
           ) : null}
           {!canRequestModifications ? (
             <p className="rounded-[12px] bg-[#f4e8dc] px-3 py-2 text-xs font-bold text-[#9a7560]">
-              {truckStatusQuery.data?.allowOrderModifications === false
-                ? "Este restaurante no permite cambios despues de pedir."
-                : order?.status === "pending"
-                  ? "Solo se habilita cuando el pago esta aprobado."
-                  : "El pedido esta en preparacion. Ya no se pueden hacer cambios. Acercate al cajero para mas informacion."}
+              {order?.status === "pending"
+                ? "Solo se habilita cuando el pago esta aprobado."
+                : "El pedido esta en preparacion. Ya no se pueden hacer cambios. Acercate al cajero para mas informacion."}
             </p>
           ) : (
             <div className="space-y-2">
@@ -711,6 +710,7 @@ export function TicketScreen({ orderId, vapidPublicKey }: { orderId: string; vap
             </button>
           ) : null}
         </div>
+        ) : null}
 
         <p className="mt-5 text-xs text-[#9a7560]">
           Actualizando cada 5 segundos · {elapsed}s

@@ -1,4 +1,8 @@
+import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
+
 import { MenuScreen } from "@/components/customer/menu-screen";
+import { getMenuData } from "@/lib/data/menu";
+import { getTruckStatus } from "@/lib/data/truck-status";
 
 type Props = {
   searchParams: Promise<{ handoff?: string }>;
@@ -6,5 +10,23 @@ type Props = {
 
 export default async function MenuPage({ searchParams }: Props) {
   const { handoff } = await searchParams;
-  return <MenuScreen handoffError={handoff} />;
+
+  const queryClient = new QueryClient();
+
+  await Promise.all([
+    queryClient.prefetchQuery({
+      queryKey: ["truck-status"],
+      queryFn: getTruckStatus,
+    }),
+    queryClient.prefetchQuery({
+      queryKey: ["public-menu"],
+      queryFn: async () => ({ categories: await getMenuData() }),
+    }),
+  ]);
+
+  return (
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <MenuScreen handoffError={handoff} />
+    </HydrationBoundary>
+  );
 }

@@ -16,6 +16,8 @@ const querySchema = z.object({
   maxCents: z.coerce.number().int().min(0).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  sortBy: z.enum(["ticket", "date", "customer", "total", "status"]).optional(),
+  sortDir: z.enum(["asc", "desc"]).optional(),
 });
 
 export async function GET(request: Request) {

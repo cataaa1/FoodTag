@@ -385,7 +385,7 @@ export function StaffKanban() {
   }, [orders]);
 
   useEffect(() => {
-    if (feedback !== "Nueva modificaciÃ³n solicitada") return;
+    if (feedback !== "Nueva modificación solicitada") return;
 
     const timeoutId = window.setTimeout(() => setFeedback(null), 3_500);
 
@@ -418,8 +418,14 @@ export function StaffKanban() {
     seenPendingModificationIds.current = new Set(pendingIds);
   }, [orders]);
 
-  async function refreshOrders() {
-    await queryClient.invalidateQueries({ queryKey: ["staff", "orders"] });
+  function applyOrderUpdate(updated: StaffOrder | null) {
+    if (!updated) return;
+    queryClient.setQueryData<OrdersResponse>(["staff", "orders"], (old) =>
+      old
+        ? { ...old, orders: old.orders.map((o) => (o.id === updated.id ? updated : o)) }
+        : old,
+    );
+    void queryClient.invalidateQueries({ queryKey: ["staff", "orders"] });
   }
 
   const advanceItemMutation = useMutation({
@@ -428,9 +434,9 @@ export function StaffKanban() {
         `/api/staff/orders/${order.id}/items/${item.id}/advance`,
         { method: "POST" },
       ),
-    onSuccess: async () => {
+    onSuccess: (data) => {
       setActionError(null);
-      await refreshOrders();
+      applyOrderUpdate(data.order);
     },
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "No pudimos avanzar el item");
@@ -443,9 +449,9 @@ export function StaffKanban() {
         `/api/staff/orders/${order.id}/items/advance-all`,
         { method: "POST" },
       ),
-    onSuccess: async () => {
+    onSuccess: (data) => {
       setActionError(null);
-      await refreshOrders();
+      applyOrderUpdate(data.order);
     },
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "No pudimos avanzar el ticket");
@@ -458,14 +464,14 @@ export function StaffKanban() {
         `/api/staff/orders/${order.id}/bump`,
         { method: "POST" },
       ),
-    onSuccess: async (data) => {
+    onSuccess: (data) => {
       setActionError(null);
       if (data.order?.status === "delivered") {
         setRecentDeliveredOrders((current) =>
           [data.order!, ...current.filter((order) => order.id !== data.order!.id)].slice(0, 12),
         );
       }
-      await refreshOrders();
+      applyOrderUpdate(data.order);
     },
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "No pudimos bumpear el ticket");
@@ -478,12 +484,12 @@ export function StaffKanban() {
         `/api/staff/orders/${order.id}/unbump`,
         { method: "POST" },
       ),
-    onSuccess: async (data, variables) => {
+    onSuccess: (data, variables) => {
       setActionError(null);
       setRecentDeliveredOrders((current) =>
         current.filter((order) => order.id !== (data.order?.id ?? variables.id)),
       );
-      await refreshOrders();
+      applyOrderUpdate(data.order);
     },
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "No pudimos hacer unbump");
@@ -496,9 +502,9 @@ export function StaffKanban() {
         `/api/staff/orders/${order.id}/pulse`,
         { method: "POST" },
       ),
-    onSuccess: async () => {
+    onSuccess: (data) => {
       setActionError(null);
-      await refreshOrders();
+      applyOrderUpdate(data.order);
     },
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "No pudimos llamar al cliente");
@@ -515,9 +521,9 @@ export function StaffKanban() {
           body: JSON.stringify({ approved: true }),
         },
       ),
-    onSuccess: async () => {
+    onSuccess: (data) => {
       setActionError(null);
-      await refreshOrders();
+      applyOrderUpdate(data.order);
     },
     onError: (error) => {
       setActionError(
@@ -536,9 +542,9 @@ export function StaffKanban() {
           body: JSON.stringify({}),
         },
       ),
-    onSuccess: async () => {
+    onSuccess: (data) => {
       setActionError(null);
-      await refreshOrders();
+      applyOrderUpdate(data.order);
     },
     onError: (error) => {
       setActionError(
@@ -557,9 +563,9 @@ export function StaffKanban() {
           body: JSON.stringify({ reason }),
         },
       ),
-    onSuccess: async () => {
+    onSuccess: (data) => {
       setActionError(null);
-      await refreshOrders();
+      applyOrderUpdate(data.order);
     },
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "No pudimos cancelar el pedido");

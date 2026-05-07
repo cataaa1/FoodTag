@@ -13,7 +13,7 @@ import {
   writeStoredDarkMode,
   type AdminLanguage,
 } from "@/lib/utils/admin-preferences";
-import { playBeeperSound } from "@/lib/utils/beeper";
+import { CUSTOM_SOUND_STORAGE_KEY, playBeeperSound } from "@/lib/utils/beeper";
 import { optimizeImageFile } from "@/lib/utils/client-image";
 import { getContrastColor, normalizeHexColor } from "@/lib/utils/color";
 import { fetchJson } from "@/lib/utils/http";
@@ -81,9 +81,10 @@ const TIMEZONES = [
 
 const BRAND_ICON_OPTIONS = ["🚚", "🍔", "🍟", "🌮", "🍕", "🥪", "🥤", "🔥"] as const;
 const BEEP_SOUND_OPTIONS = [
-  { id: "classic", label: "Classic", description: "Más firme y clásico" },
-  { id: "soft", label: "Soft", description: "Más suave y corto" },
-  { id: "marcado", label: "Marcado", description: "Más insistente y brillante" },
+  { id: "classic", label: "Classic — firme y clásico" },
+  { id: "soft", label: "Soft — suave y corto" },
+  { id: "marcado", label: "Marcado — insistente y brillante" },
+  { id: "custom", label: "Personalizado (importar archivo)" },
 ] as const;
 const MAX_IMAGE_UPLOAD_BYTES = 1_600_000;
 const MAX_IMAGE_DIMENSION = 1600;
@@ -110,9 +111,14 @@ export function SettingsManager() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const customSoundRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState<SettingsForm>(EMPTY_FORM);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [customSoundName, setCustomSoundName] = useState<string | null>(() => {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage.getItem(CUSTOM_SOUND_STORAGE_KEY) ? "Sonido importado" : null;
+  });
   const [darkModePreference, setDarkModePreference] = useState(readStoredDarkMode);
   const [languagePreference, setLanguagePreference] =
     useState<AdminLanguage>(readStoredAdminLanguage);
@@ -505,56 +511,69 @@ export function SettingsManager() {
                 </select>
               </Field>
               <Field label="Sonido beeper">
-                <div className="grid gap-2">
-                  {BEEP_SOUND_OPTIONS.map((option) => {
-                    const selected = form.beepSoundId === option.id;
-
-                    return (
-                      <button
-                        className="flex items-center justify-between rounded-[12px] border px-3 py-3 text-left transition"
-                        key={option.id}
-                        onClick={() => {
-                          updateForm("beepSoundId", option.id);
-                          playBeeperSound(option.id);
-                        }}
-                        style={
-                          selected
-                            ? {
-                                borderColor: normalizeHexColor(form.primaryColor),
-                                backgroundColor: `${normalizeHexColor(form.primaryColor)}1f`,
-                              }
-                            : undefined
-                        }
-                        type="button"
-                      >
-                        <div>
-                          <div className="text-sm font-black text-[#111] dark:text-[#f5f5f5]">
-                            {option.label}
-                          </div>
-                          <div className="text-xs text-[#777] dark:text-[#b4b4b4]">
-                            {option.description}
-                          </div>
-                        </div>
-                        <span
-                          className="rounded-full px-2.5 py-1 text-[11px] font-black"
-                          style={
-                            selected
-                              ? {
-                                  backgroundColor: normalizeHexColor(form.primaryColor),
-                                  color: getContrastColor(form.primaryColor),
-                                }
-                              : {
-                                  backgroundColor: "rgba(148, 163, 184, 0.18)",
-                                  color: "var(--foreground)",
-                                }
-                          }
-                        >
-                          {selected ? "Elegido" : "Probar"}
-                        </span>
-                      </button>
-                    );
-                  })}
+                <div className="flex gap-2">
+                  <select
+                    className="admin-input flex-1"
+                    onChange={(e) => {
+                      updateForm("beepSoundId", e.target.value);
+                      playBeeperSound(e.target.value);
+                    }}
+                    value={form.beepSoundId}
+                  >
+                    {BEEP_SOUND_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="admin-muted-button shrink-0"
+                    onClick={() => playBeeperSound(form.beepSoundId)}
+                    title="Probar sonido"
+                    type="button"
+                  >
+                    ▶ Probar
+                  </button>
                 </div>
+                {form.beepSoundId === "custom" ? (
+                  <div className="mt-2">
+                    <input
+                      accept="audio/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          const dataUrl = reader.result as string;
+                          try {
+                            localStorage.setItem(CUSTOM_SOUND_STORAGE_KEY, dataUrl);
+                            setCustomSoundName(file.name);
+                            playBeeperSound("custom");
+                          } catch {
+                            setError("No pudimos guardar el sonido. El archivo puede ser demasiado grande.");
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                        e.target.value = "";
+                      }}
+                      ref={customSoundRef}
+                      type="file"
+                    />
+                    <button
+                      className="admin-muted-button w-full text-center"
+                      onClick={() => customSoundRef.current?.click()}
+                      type="button"
+                    >
+                      {customSoundName ? `📁 ${customSoundName}` : "Importar archivo de audio…"}
+                    </button>
+                    {customSoundName ? (
+                      <p className="mt-1 text-[11px] text-[#999]">
+                        El sonido se guarda en este navegador. Volvé a importarlo si usás otro dispositivo.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </Field>
               <Field label="Cooldown retiro cliente (seg)">
                 <input
@@ -656,7 +675,7 @@ export function SettingsManager() {
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <PreferenceButton
                       active={languagePreference === "es"}
-                      label="Espanol"
+                      label="Español"
                       onClick={() => updateLanguagePreference("es")}
                     />
                     <PreferenceButton
