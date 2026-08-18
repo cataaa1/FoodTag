@@ -56,11 +56,6 @@ type VariantInput = {
   position: number;
 };
 
-type CategoryLookupRow = {
-  id: string;
-  name: string;
-};
-
 function mapVariant(row: MenuVariantRow) {
   return { ...row, available: Boolean(row.available) };
 }

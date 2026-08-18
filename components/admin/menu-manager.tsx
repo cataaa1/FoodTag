@@ -610,15 +610,8 @@ function CategoryFormPanel({
         placeholder="Hamburguesas"
         value={form.name}
       />
-      <input
-        className="admin-input"
-        min="0"
-        onChange={(event) =>
-          onChange((current) => ({ ...current, position: event.target.value }))
-        }
-        type="number"
-        value={form.position}
-      />
+      {/* El orden no se edita a mano: las categorias nuevas van al final y las
+          existentes conservan su posicion. Un spinner sin etiqueta solo confundia. */}
       <ToggleRow
         checked={form.visible}
         label="Visible"

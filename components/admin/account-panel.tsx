@@ -28,8 +28,6 @@ export type AdminSession = {
   permissions: string[];
 };
 
-const REMEMBERED_ACCOUNT_KEY = "foodtag-staff-remembered-account";
-
 const PERMISSION_LABELS: Record<string, string> = {
   "menu.read": "Ver menú",
   "menu.write": "Editar menú",
@@ -64,16 +62,8 @@ export function AccountPanel({ onError }: { onError?: (message: string) => void 
   const permissions = session?.permissions ?? [];
 
   const logoutMutation = useMutation({
-    mutationFn: async (options: { forgetAccount: boolean }) => {
+    mutationFn: async () => {
       await fetch("/api/staff/logout", { method: "POST" });
-
-      if (options.forgetAccount) {
-        try {
-          localStorage.removeItem(REMEMBERED_ACCOUNT_KEY);
-        } catch {
-          // storage bloqueado, no es critico
-        }
-      }
     },
     onSuccess: () => {
       router.push("/staff/login");
@@ -143,25 +133,14 @@ export function AccountPanel({ onError }: { onError?: (message: string) => void 
 
         <div className="mt-4 flex flex-wrap gap-2">
           <button
-            className="admin-muted-button"
+            className="admin-primary-button"
             disabled={logoutMutation.isPending}
-            onClick={() => logoutMutation.mutate({ forgetAccount: false })}
+            onClick={() => logoutMutation.mutate()}
             type="button"
           >
             {logoutMutation.isPending ? "Saliendo..." : "Cerrar sesión"}
           </button>
-          <button
-            className="admin-primary-button"
-            disabled={logoutMutation.isPending}
-            onClick={() => logoutMutation.mutate({ forgetAccount: true })}
-            type="button"
-          >
-            Cambiar de cuenta
-          </button>
         </div>
-        <p className="mt-2 text-[11px] leading-4 text-[#999]">
-          &quot;Cambiar de cuenta&quot; además olvida la cuenta guardada en este navegador.
-        </p>
       </div>
 
       <div className="space-y-4 rounded-[16px] border border-[#e8e8e8] bg-[#fafafa] p-4 dark:border-[#2e2e2e] dark:bg-[#242424]">

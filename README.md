@@ -1,13 +1,13 @@
 # FoodTag
 
-FoodTag es una web app de pedidos autoservicio para food trucks construida con Next.js App Router y SQLite local.
+FoodTag es una web app de pedidos autoservicio para food trucks construida con Next.js App Router y Turso (libSQL).
 
 ## Estado actual
 
 Este baseline implementa **Fase 0 + Fase 1 + Fase 2 + Fase 3** y un primer corte funcional de **Fase 4** del PRD:
 
 - Scaffold completo con Next.js, Tailwind v4, shadcn/ui, Vitest y TypeScript estricto.
-- Persistencia local con SQLite en `data/foodtag.sqlite`.
+- Persistencia en Turso (libSQL) via `@libsql/client`.
 - Auth staff local con email/password, hash PBKDF2 y cookie httpOnly firmada.
 - Sesion cliente con JWT httpOnly, carrito persistente en el dispositivo, ticket con polling y beeper.
 - Kanban staff para avanzar pedidos, marcar listos, cancelar y avisar al cliente.
@@ -68,21 +68,24 @@ npm run db:migrate
 npm run seed
 ```
 
-## Base de datos local
+## Base de datos
 
-Para crear la DB local y cargar el admin inicial:
+La base vive en Turso. Configurá `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN` en
+`.env.local` y cargá el esquema y el admin inicial con:
 
 ```bash
 npm run seed
 ```
 
-El archivo SQLite se crea en:
+`npm run db:migrate` aplica solo las migraciones pendientes, sin tocar los datos.
+El deploy lo corre solo: `vercel-build` es `db:migrate && next build`.
 
-```text
-data/foodtag.sqlite
+Para probar contra una base local descartable en vez de Turso, apuntá la URL a un
+archivo:
+
+```bash
+TURSO_DATABASE_URL="file:./local.sqlite" TURSO_AUTH_TOKEN=dummy npm run seed
 ```
-
-Ese archivo queda ignorado por Git para evitar commitear datos locales.
 
 ## Credenciales iniciales
 
