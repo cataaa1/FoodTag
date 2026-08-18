@@ -27,6 +27,9 @@ export type StaffSessionJwt = {
 /** Truck en el que esta parado el superadmin. Los empleados no la usan. */
 export const ACTIVE_TRUCK_COOKIE = "foodtag_active_truck";
 
+/** Truck del que esta comprando el cliente. La deja el QR al entrar por /t/<slug>. */
+export const PUBLIC_TRUCK_COOKIE = "foodtag_truck";
+
 function getStaffSecret() {
   return new TextEncoder().encode(getServerEnv().STAFF_SESSION_SECRET);
 }

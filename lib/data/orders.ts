@@ -438,8 +438,14 @@ export async function createCustomerOrder(
   const menuItemResults = await Promise.all(
     input.items.map((entry) =>
       db.execute({
-        sql: "select id, name, available, has_variants, price_cents from menu_item where id = ?",
-        args: [entry.menuItemId],
+        // El truck es parte del filtro a proposito: sin esto se podia mandar el
+        // id de un producto de otro foodtruck y quedaba pegado a este pedido.
+        sql: `
+          select id, name, available, has_variants, price_cents
+          from menu_item
+          where id = ? and truck_id = ?
+        `,
+        args: [entry.menuItemId, config.id],
       }),
     ),
   );

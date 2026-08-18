@@ -1,5 +1,8 @@
+import { cookies } from "next/headers";
+
 import { getActiveTruckIdFromCookie } from "@/lib/auth/platform-session";
 import { getStaffContext } from "@/lib/auth/staff-session";
+import { PUBLIC_TRUCK_COOKIE } from "@/lib/auth/staff-token";
 import { getDb } from "@/lib/db/client";
 import type {
   OpeningHours,
@@ -184,17 +187,46 @@ export async function getCurrentTruckId(): Promise<string> {
   }
 
   const activeTruckId = await getActiveTruckIdFromCookie();
-  if (activeTruckId) {
-    const exists = await getDb().execute({
-      sql: "select id from truck_config where id = ?",
-      args: [activeTruckId],
-    });
-    if (exists.rows.length) {
-      return activeTruckId;
-    }
+  if (activeTruckId && (await truckIdExists(activeTruckId))) {
+    return activeTruckId;
+  }
+
+  // Cliente que entro por el QR: /t/<slug> le dejo fijado el truck.
+  const cookieStore = await cookies();
+  const publicTruckId = cookieStore.get(PUBLIC_TRUCK_COOKIE)?.value;
+  if (publicTruckId && (await truckIdExists(publicTruckId))) {
+    return publicTruckId;
   }
 
   return getFirstTruckId();
+}
+
+async function truckIdExists(truckId: string) {
+  const result = await getDb().execute({
+    sql: "select id from truck_config where id = ?",
+    args: [truckId],
+  });
+  return result.rows.length > 0;
+}
+
+/**
+ * Cuantos foodtrucks hay cargados. Con mas de uno, entrar al menu sin haber
+ * escaneado un QR es ambiguo: no hay forma de adivinar de cual quiere comprar.
+ */
+export async function countTrucks(): Promise<number> {
+  const result = await getDb().execute("select count(*) as total from truck_config");
+  return Number((result.rows[0] as unknown as { total: number }).total);
+}
+
+/** True cuando la request no tiene truck fijado y hay mas de uno para elegir. */
+export async function isTruckAmbiguous(): Promise<boolean> {
+  if (await getStaffContext()) return false;
+  if (await getActiveTruckIdFromCookie()) return false;
+
+  const cookieStore = await cookies();
+  if (cookieStore.get(PUBLIC_TRUCK_COOKIE)?.value) return false;
+
+  return (await countTrucks()) > 1;
 }
 
 export async function getTruckConfig(): Promise<TruckConfig> {

@@ -52,6 +52,7 @@ type SessionDraft = { name: string; phone: string };
 
 const EMPTY_CATEGORIES: MenuCategory[] = [];
 const MENU_ENTRY_SESSION_KEY = "foodtag-menu-entered";
+const LAST_TRUCK_KEY = "foodtag-last-truck";
 const ITEM_EMOJIS = ["🍔", "🍗", "🥓", "🍟", "🧀", "🥤", "💧", "🍫", "🍪"] as const;
 
 function itemEmoji(index: number) {
@@ -107,7 +108,13 @@ function TruckBrandFallback({
   );
 }
 
-export function MenuScreen({ handoffError }: { handoffError?: string }) {
+export function MenuScreen({
+  handoffError,
+  truckSlug,
+}: {
+  handoffError?: string;
+  truckSlug?: string;
+}) {
   const router = useRouter();
   const [draft, setDraft] = useState<SessionDraft>({ name: "", phone: "" });
   const [sessionCustomer, setSessionCustomer] = useState<Customer | null>(null);
@@ -125,6 +132,7 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
   const addItem = useCartStore((state) => state.addItem);
   const decrementItem = useCartStore((state) => state.decrementItem);
   const cartItems = useCartStore((state) => state.items);
+  const clearCart = useCartStore((state) => state.clear);
   const cartTotals = getCartTotals(cartItems);
 
   const statusQuery = useQuery({
@@ -166,6 +174,23 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
   useEffect(() => {
     clearMenuEntrySession();
   }, []);
+
+  // Si el QR escaneado es de otro foodtruck, el carrito que venia de antes ya no
+  // sirve: sus productos no existen en este menu y el checkout los rechazaria.
+  useEffect(() => {
+    if (!truckSlug) return;
+
+    try {
+      const previous = localStorage.getItem(LAST_TRUCK_KEY);
+      localStorage.setItem(LAST_TRUCK_KEY, truckSlug);
+
+      if (previous && previous !== truckSlug) {
+        clearCart();
+      }
+    } catch {
+      // storage bloqueado: no es critico
+    }
+  }, [truckSlug, clearCart]);
 
   // Redirect to active ticket once session is confirmed (fresh or auto-restored).
   useEffect(() => {
