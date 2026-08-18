@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { getPlatformSession } from "@/lib/auth/platform-session";
 import { getStaffContext } from "@/lib/auth/staff-session";
 
 /**
@@ -16,6 +17,11 @@ export default async function AdminLayout({
   const context = await getStaffContext();
 
   if (!context) {
+    // Un superadmin sin truck elegido tiene que pasar por su home primero.
+    if (await getPlatformSession()) {
+      redirect("/superadmin");
+    }
+
     redirect("/staff/login?next=/admin");
   }
 

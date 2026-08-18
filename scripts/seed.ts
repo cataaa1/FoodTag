@@ -42,6 +42,10 @@ async function seedTruckConfig() {
   const existing = result.rows[0] as { id: string } | undefined;
 
   if (existing) {
+    await db.execute({
+      sql: "update truck_config set slug = ? where id = ? and (slug is null or slug = '')",
+      args: ["el-smash-del-barrio", existing.id],
+    });
     return existing.id;
   }
 
@@ -49,13 +53,14 @@ async function seedTruckConfig() {
   await db.execute({
     sql: `
       insert into truck_config (
-        id, name, primary_color, timezone, tip_defaults_json, beep_sound_id
+        id, name, slug, primary_color, timezone, tip_defaults_json, beep_sound_id
       )
-      values (@id, @name, @primaryColor, @timezone, @tipDefaultsJson, @beepSoundId)
+      values (@id, @name, @slug, @primaryColor, @timezone, @tipDefaultsJson, @beepSoundId)
     `,
     args: {
       id,
       name: "El Smash del Barrio",
+      slug: "el-smash-del-barrio",
       primaryColor: "#F97316",
       timezone: "America/Argentina/Buenos_Aires",
       tipDefaultsJson: JSON.stringify([0, 5, 10, 15]),
@@ -135,15 +140,14 @@ async function seedAdmin(truckId: string, adminRoleId: string) {
   await db.execute({
     sql: `
       insert into staff_user (
-        id, truck_id, email, full_name, password_hash, role_id, active, is_super_admin
+        id, truck_id, email, full_name, password_hash, role_id, active
       )
-      values (@id, @truckId, @email, @fullName, @passwordHash, @roleId, 1, 1)
+      values (@id, @truckId, @email, @fullName, @passwordHash, @roleId, 1)
       on conflict(email) do update set
         truck_id = excluded.truck_id,
         full_name = excluded.full_name,
         role_id = excluded.role_id,
-        active = 1,
-        is_super_admin = 1
+        active = 1
     `,
     args: {
       id: existing?.id ?? randomUUID(),
@@ -512,8 +516,38 @@ async function seedDemoMenu(truckId: string) {
   }
 }
 
+async function seedPlatformAdmin() {
+  const env = getServerEnv();
+  const db = getDb();
+  const email = env.SEED_SUPERADMIN_EMAIL ?? "superadmin@foodtag.ar";
+  const password = env.SEED_SUPERADMIN_PASSWORD ?? "ChangeMe123!";
+
+  const existing = await db.execute({
+    sql: "select id from platform_admin where lower(email) = lower(@email)",
+    args: { email },
+  });
+
+  await db.execute({
+    sql: `
+      insert into platform_admin (id, email, full_name, password_hash, active)
+      values (@id, @email, 'Superadmin FoodTag', @passwordHash, 1)
+      on conflict(email) do update set
+        password_hash = excluded.password_hash,
+        active = 1
+    `,
+    args: {
+      id: (existing.rows[0] as { id: string } | undefined)?.id ?? randomUUID(),
+      email,
+      passwordHash: hashPassword(password),
+    },
+  });
+
+  console.log(`Superadmin de plataforma: ${email}`);
+}
+
 async function main() {
   await migrateDb();
+  await seedPlatformAdmin();
 
   // El truck se crea primero: roles, horarios, usuarios y menu le pertenecen.
   const truckConfigId = await seedTruckConfig();

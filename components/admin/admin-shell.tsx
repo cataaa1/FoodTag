@@ -35,7 +35,6 @@ type AdminSession = {
     id: string;
     email: string;
     fullName: string;
-    isSuperAdmin: boolean;
   };
   role: {
     id: string;
@@ -53,7 +52,6 @@ type NavItem = {
     en: string;
   };
   permissions?: PermissionKey[];
-  superAdminOnly?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -81,7 +79,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: "👥",
     label: { es: "Usuarios y roles", en: "Users and roles" },
     permissions: ["users.manage", "roles.manage"],
-    superAdminOnly: true,
   },
   {
     href: "/admin/orders",
@@ -104,10 +101,6 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 function canAccessItem(item: NavItem, session: AdminSession | null) {
-  if (item.superAdminOnly && session && !session.staffUser.isSuperAdmin) {
-    return false;
-  }
-
   if (!item.permissions?.length || !session) {
     return true;
   }

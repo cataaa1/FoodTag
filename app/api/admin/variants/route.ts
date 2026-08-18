@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
+import { getCurrentTruckId } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
 import { menuQuerySchema, variantCreateSchema } from "@/lib/validators/menu";
 
@@ -37,7 +38,15 @@ export async function GET(request: Request) {
           sql: "select * from menu_variant where menu_item_id = ? order by position asc",
           args: [query.menuItemId],
         })
-      : await db.execute("select * from menu_variant order by position asc");
+      : await db.execute({
+          sql: `
+            select menu_variant.* from menu_variant
+            join menu_item on menu_item.id = menu_variant.menu_item_id
+            where menu_item.truck_id = ?
+            order by menu_variant.position asc
+          `,
+          args: [await getCurrentTruckId()],
+        });
 
     return NextResponse.json({
       variants: (result.rows as unknown as VariantRow[]).map(mapVariant),

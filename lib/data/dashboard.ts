@@ -1,6 +1,11 @@
 import type { OrderStatus, TruckStatus } from "@/lib/types/domain";
 import { getDb } from "@/lib/db/client";
-import { buildTruckStatus, getOpeningHours, getTruckConfig } from "@/lib/data/truck-status";
+import {
+  buildTruckStatus,
+  getCurrentTruckId,
+  getOpeningHours,
+  getTruckConfig,
+} from "@/lib/data/truck-status";
 
 type DashboardOrderRow = {
   status: OrderStatus;
@@ -172,6 +177,7 @@ function getPreparationSeconds(order: DashboardOrderRow) {
 
 export async function getDashboardToday(): Promise<DashboardToday> {
   const db = getDb();
+  const truckId = await getCurrentTruckId();
   const [config, hours] = await Promise.all([getTruckConfig(), getOpeningHours()]);
   const serviceDate = getServiceDate(config.timezone);
   const recentDates = getRecentServiceDates(config.timezone, 7);
@@ -181,10 +187,10 @@ export async function getDashboardToday(): Promise<DashboardToday> {
       sql: `
         select status, payment_status, total_cents, created_at, ready_at
         from customer_order
-        where service_date = ?
+        where truck_id = ? and service_date = ?
         order by created_at asc
       `,
-      args: [serviceDate],
+      args: [truckId, serviceDate],
     }),
     db.execute({
       sql: `
@@ -193,13 +199,14 @@ export async function getDashboardToday(): Promise<DashboardToday> {
           coalesce(sum(order_item.quantity), 0) as quantity
         from order_item
         join customer_order on customer_order.id = order_item.order_id
-        where customer_order.service_date = ?
+        where customer_order.truck_id = ?
+          and customer_order.service_date = ?
           and customer_order.payment_status = 'approved'
         group by order_item.name_snapshot
         order by quantity desc, order_item.name_snapshot asc
         limit 1
       `,
-      args: [serviceDate],
+      args: [truckId, serviceDate],
     }),
     db.execute({
       sql: `
@@ -207,7 +214,8 @@ export async function getDashboardToday(): Promise<DashboardToday> {
           service_date,
           coalesce(sum(total_cents), 0) as revenue_cents
         from customer_order
-        where payment_status = 'approved'
+        where truck_id = ?
+          and payment_status = 'approved'
           and service_date >= ?
           and service_date <= ?
         group by service_date
@@ -267,10 +275,11 @@ export async function getDashboardToday(): Promise<DashboardToday> {
         sql: `
           select status, payment_status, total_cents, created_at, ready_at
           from customer_order
-          where service_date = ?
+          where truck_id = ?
+            and service_date = ?
             and payment_status = 'approved'
         `,
-        args: [entry.serviceDate],
+        args: [truckId, entry.serviceDate],
       }),
     ),
   );

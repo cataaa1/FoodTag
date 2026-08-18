@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody, parseParams } from "@/lib/api/route";
 import { hashPassword } from "@/lib/auth/password";
-import { requireSuperAdmin } from "@/lib/auth/staff-session";
+import { requireStaffPermission } from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
 import { getDb } from "@/lib/db/client";
 import { idParamSchema, staffUserUpdateSchema } from "@/lib/validators/menu";
@@ -29,7 +29,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const staffContext = await requireSuperAdmin();
+    const staffContext = await requireStaffPermission("users.write");
     const { id } = parseParams(await context.params, idParamSchema);
     const body = await parseJsonBody(request, staffUserUpdateSchema);
     const db = getDb();
@@ -109,7 +109,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const staffContext = await requireSuperAdmin();
+    const staffContext = await requireStaffPermission("users.write");
     const { id } = parseParams(await context.params, idParamSchema);
     const db = getDb();
 

@@ -5,10 +5,7 @@ import { NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { hashPassword } from "@/lib/auth/password";
-import {
-  requireStaffPermission,
-  requireSuperAdmin,
-} from "@/lib/auth/staff-session";
+import { requireStaffPermission } from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
 import { getCurrentTruckId } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
@@ -45,14 +42,16 @@ export async function GET() {
   try {
     await requireStaffPermission("users.manage");
 
-    const result = await getDb().execute(
-      `
+    const result = await getDb().execute({
+      sql: `
         select staff_user.*, role.name as role_name
         from staff_user
         join role on role.id = staff_user.role_id
+        where staff_user.truck_id = ?
         order by staff_user.created_at desc
       `,
-    );
+      args: [await getCurrentTruckId()],
+    });
     const users = (result.rows as unknown as StaffUserRow[]).map(mapStaffUser);
 
     return NextResponse.json({ users });
@@ -63,7 +62,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const context = await requireSuperAdmin();
+    const context = await requireStaffPermission("users.write");
     const body = await parseJsonBody(request, staffUserCreateSchema);
     const db = getDb();
     const id = randomUUID();

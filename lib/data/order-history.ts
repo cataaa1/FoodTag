@@ -1,3 +1,4 @@
+import { getCurrentTruckId } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
 import type { OrderStatus } from "@/lib/types/domain";
 
@@ -90,8 +91,10 @@ export async function getOrderHistory(filters: OrderHistoryFilters = {}): Promis
     sortDir = "desc",
   } = filters;
 
-  const conditions: string[] = ["1=1"];
-  const args: (string | number)[] = [];
+  // El filtro por truck va primero y no depende de los filtros del usuario:
+  // el historial nunca puede mostrar pedidos de otro foodtruck.
+  const conditions: string[] = ["co.truck_id = ?"];
+  const args: (string | number)[] = [await getCurrentTruckId()];
 
   if (fromDate) {
     conditions.push("co.service_date >= ?");

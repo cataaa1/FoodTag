@@ -89,16 +89,18 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
         body: JSON.stringify({ email, password }),
       });
 
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: { message?: string }; redirectTo?: string | null }
+        | null;
+
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
         throw new Error(payload?.error?.message ?? "No se pudo iniciar sesión");
       }
 
       writeRememberedAccount(remember ? { email, password } : null);
 
-      router.push(nextPath ?? "/staff/kanban");
+      // El superadmin va a su home de plataforma, no al panel de un truck.
+      router.push(payload?.redirectTo ?? nextPath ?? "/staff/kanban");
       router.refresh();
     } catch (submitError) {
       setError(

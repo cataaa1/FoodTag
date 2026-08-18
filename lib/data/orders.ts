@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { ApiError } from "@/lib/api/errors";
 import { getDb } from "@/lib/db/client";
-import { getTruckConfig, getTruckStatus } from "@/lib/data/truck-status";
+import {
+  getCurrentTruckId,
+  getTruckConfig,
+  getTruckStatus,
+} from "@/lib/data/truck-status";
 import type {
   Customer,
   CustomerOrder,
@@ -193,9 +197,17 @@ function visibleStaffNotes(
 }
 
 async function getModifiersByMenuItemId() {
-  const result = await getDb().execute(
-    "select menu_item_id, label, default_checked from menu_item_modifier order by position asc",
-  );
+  const result = await getDb().execute({
+    sql: `
+      select menu_item_modifier.menu_item_id, menu_item_modifier.label,
+        menu_item_modifier.default_checked
+      from menu_item_modifier
+      join menu_item on menu_item.id = menu_item_modifier.menu_item_id
+      where menu_item.truck_id = ?
+      order by menu_item_modifier.position asc
+    `,
+    args: [await getCurrentTruckId()],
+  });
   const rows = result.rows as unknown as MenuItemModifierRow[];
   const byMenuItemId = new Map<string, MenuItemModifierRow[]>();
 
@@ -917,6 +929,7 @@ export async function cancelStaffOrder(orderId: string, reason: string) {
 
 export async function getStaffOrders() {
   const db = getDb();
+  const truckId = await getCurrentTruckId();
   const cooldownSeconds = await getCustomerPickupCooldownSeconds();
   const pickupVisibleSince = `-${cooldownSeconds} seconds`;
 
@@ -929,7 +942,8 @@ export async function getStaffOrders() {
           customer.phone as customer_phone
         from customer_order
         join customer on customer.id = customer_order.customer_id
-        where customer_order.payment_status = 'approved'
+        where customer_order.truck_id = ?
+          and customer_order.payment_status = 'approved'
           and (
             customer_order.status in ('pending', 'preparing')
             or (
@@ -946,7 +960,7 @@ export async function getStaffOrders() {
           )
         order by customer_order.created_at asc
       `,
-      args: [pickupVisibleSince],
+      args: [truckId, pickupVisibleSince],
     }),
     getModifiersByMenuItemId(),
   ]);

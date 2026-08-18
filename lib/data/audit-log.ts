@@ -98,7 +98,9 @@ export async function writeAuditLog(input: AuditLogWriteInput): Promise<void> {
         reason,
         metadata_json
       )
-      values (?, ?, ?, ?, ?, ?, ?, ?)
+      -- el actor puede ser el superadmin, que no tiene fila en staff_user:
+      -- la subconsulta devuelve null en vez de romper la foreign key
+      values (?, ?, (select id from staff_user where id = ?), ?, ?, ?, ?, ?)
     `,
     args: [
       randomUUID(),

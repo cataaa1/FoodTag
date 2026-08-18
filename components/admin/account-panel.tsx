@@ -18,7 +18,6 @@ export type AdminSession = {
     id: string;
     email: string;
     fullName: string;
-    isSuperAdmin: boolean;
   };
   role: {
     id: string;
@@ -105,11 +104,6 @@ export function AccountPanel({ onError }: { onError?: (message: string) => void 
           >
             {session?.role.name ?? "sin rol"}
           </span>
-          {session?.staffUser.isSuperAdmin ? (
-            <span className="rounded-full bg-[#111] px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.5px] text-white dark:bg-[#f5f5f5] dark:text-[#111]">
-              Super admin
-            </span>
-          ) : null}
         </div>
 
         <p className="mt-4 text-xs font-bold uppercase tracking-[0.8px] text-[#999]">

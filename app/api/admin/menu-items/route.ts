@@ -133,10 +133,30 @@ export async function GET() {
     await requireStaffPermission("menu.read");
 
     const db = getDb();
+    const truckId = await getCurrentTruckId();
     const [itemResult, modResult, varResult] = await Promise.all([
-      db.execute("select * from menu_item order by position asc"),
-      db.execute("select * from menu_item_modifier order by position asc"),
-      db.execute("select * from menu_variant order by position asc"),
+      db.execute({
+        sql: "select * from menu_item where truck_id = ? order by position asc",
+        args: [truckId],
+      }),
+      db.execute({
+        sql: `
+          select menu_item_modifier.* from menu_item_modifier
+          join menu_item on menu_item.id = menu_item_modifier.menu_item_id
+          where menu_item.truck_id = ?
+          order by menu_item_modifier.position asc
+        `,
+        args: [truckId],
+      }),
+      db.execute({
+        sql: `
+          select menu_variant.* from menu_variant
+          join menu_item on menu_item.id = menu_variant.menu_item_id
+          where menu_item.truck_id = ?
+          order by menu_variant.position asc
+        `,
+        args: [truckId],
+      }),
     ]);
 
     const items = itemResult.rows as unknown as MenuItemRow[];

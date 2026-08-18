@@ -32,9 +32,10 @@ export async function GET() {
   try {
     await requireStaffPermission("menu.read");
 
-    const result = await getDb().execute(
-      "select * from category order by position asc",
-    );
+    const result = await getDb().execute({
+      sql: "select * from category where truck_id = ? order by position asc",
+      args: [await getCurrentTruckId()],
+    });
     const categories = (result.rows as unknown as CategoryRow[]).map(mapCategory);
 
     return NextResponse.json({ categories });

@@ -2,6 +2,11 @@ import { cookies } from "next/headers";
 
 import { ApiError } from "@/lib/api/errors";
 import { hasPermission } from "@/lib/auth/permissions";
+import {
+  getActiveTruckIdFromCookie,
+  getPlatformAdminById,
+} from "@/lib/auth/platform-session";
+import { PERMISSIONS } from "@/lib/constants/permissions";
 import { verifyPassword } from "@/lib/auth/password";
 import {
   STAFF_SESSION_COOKIE,
@@ -16,9 +21,9 @@ type StaffUserRow = {
   email: string;
   full_name: string;
   password_hash: string;
+  truck_id: string;
   role_id: string;
   active: number;
-  is_super_admin: number;
   created_at: string;
 };
 
@@ -32,6 +37,8 @@ type RoleRow = {
 type StaffContext = {
   user: StaffUser;
   role: Role;
+  /** true cuando quien opera es el superadmin parado en un truck, no un empleado. */
+  isPlatformAdmin: boolean;
 };
 
 function mapStaffUser(row: StaffUserRow): StaffUser {
@@ -39,9 +46,9 @@ function mapStaffUser(row: StaffUserRow): StaffUser {
     id: row.id,
     email: row.email,
     fullName: row.full_name,
+    truckId: row.truck_id,
     roleId: row.role_id,
     active: Boolean(row.active),
-    isSuperAdmin: Boolean(row.is_super_admin),
     createdAt: row.created_at,
   };
 }
@@ -87,6 +94,37 @@ export async function getStaffContextById(staffUserId: string): Promise<StaffCon
   return {
     user: mapStaffUser(staffRow),
     role: mapRole(roleRow),
+    isPlatformAdmin: false,
+  };
+}
+
+/**
+ * Contexto sintetico para el superadmin parado en un truck. No es empleado de
+ * nadie, asi que no tiene fila en staff_user ni rol: se le da el juego completo
+ * de permisos sobre el truck activo. Gracias a esto todos los endpoints del
+ * panel siguen usando requireStaffPermission sin enterarse de la diferencia.
+ */
+function buildPlatformStaffContext(
+  admin: { id: string; email: string; fullName: string },
+  truckId: string,
+): StaffContext {
+  return {
+    user: {
+      id: admin.id,
+      email: admin.email,
+      fullName: admin.fullName,
+      truckId,
+      roleId: "platform",
+      active: true,
+      createdAt: new Date(0).toISOString(),
+    },
+    role: {
+      id: "platform",
+      name: "superadmin",
+      isSystem: true,
+      permissionsJson: [...PERMISSIONS],
+    },
+    isPlatformAdmin: true,
   };
 }
 
@@ -116,6 +154,21 @@ export async function getStaffContext(): Promise<StaffContext | null> {
 
   try {
     const payload = await verifyStaffSessionToken(token);
+
+    // La misma cookie la usa el superadmin de plataforma, que no es staff.
+    if (payload.kind === "platform" || !payload.staffUserId) {
+      const admin = payload.platformAdminId
+        ? await getPlatformAdminById(payload.platformAdminId)
+        : null;
+      const activeTruckId = await getActiveTruckIdFromCookie();
+
+      if (!admin || !activeTruckId) {
+        return null;
+      }
+
+      return buildPlatformStaffContext(admin, activeTruckId);
+    }
+
     return getStaffContextById(payload.staffUserId);
   } catch {
     return null;
@@ -146,19 +199,3 @@ export async function requireStaffSession() {
   return context;
 }
 
-/**
- * Solo el super admin puede dar de alta cuentas y tocar roles.
- */
-export async function requireSuperAdmin() {
-  const context = await requireStaffSession();
-
-  if (!context.user.isSuperAdmin) {
-    throw new ApiError(
-      403,
-      "FORBIDDEN",
-      "Solo el super admin puede administrar cuentas y roles",
-    );
-  }
-
-  return context;
-}

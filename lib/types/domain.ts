@@ -83,9 +83,9 @@ export type StaffUser = {
   id: string;
   email: string;
   fullName: string;
+  truckId: string;
   roleId: string;
   active: boolean;
-  isSuperAdmin: boolean;
   createdAt: string;
 };
 

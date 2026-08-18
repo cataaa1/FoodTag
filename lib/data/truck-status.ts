@@ -1,3 +1,5 @@
+import { getActiveTruckIdFromCookie } from "@/lib/auth/platform-session";
+import { getStaffContext } from "@/lib/auth/staff-session";
 import { getDb } from "@/lib/db/client";
 import type {
   OpeningHours,
@@ -152,13 +154,7 @@ export function buildTruckStatus(
   };
 }
 
-/**
- * El truck "actual". Hoy hay uno solo y devuelve ese. Cuando el sistema sea
- * multi-tenant, esto pasa a resolverse por request: del staff_user.truck_id
- * para el panel, y del slug de la URL para el cliente. Que todas las escrituras
- * pasen ya por aca hace que ese cambio sea un solo lugar y no doce.
- */
-export async function getCurrentTruckId(): Promise<string> {
+async function getFirstTruckId(): Promise<string> {
   const result = await getDb().execute(
     "select id from truck_config order by created_at asc limit 1",
   );
@@ -171,9 +167,43 @@ export async function getCurrentTruckId(): Promise<string> {
   return row.id;
 }
 
+/**
+ * En que truck esta parada esta request.
+ *
+ *   empleado del truck -> su staff_user.truck_id, no lo puede cambiar
+ *   superadmin         -> el que eligio en su home (cookie de truck activo)
+ *   sin sesion         -> el primero, hasta que las rutas publicas lleven el
+ *                         slug del truck en la URL
+ *
+ * Todas las escrituras y lecturas acotadas pasan por aca.
+ */
+export async function getCurrentTruckId(): Promise<string> {
+  const staff = await getStaffContext();
+  if (staff) {
+    return staff.user.truckId;
+  }
+
+  const activeTruckId = await getActiveTruckIdFromCookie();
+  if (activeTruckId) {
+    const exists = await getDb().execute({
+      sql: "select id from truck_config where id = ?",
+      args: [activeTruckId],
+    });
+    if (exists.rows.length) {
+      return activeTruckId;
+    }
+  }
+
+  return getFirstTruckId();
+}
+
 export async function getTruckConfig(): Promise<TruckConfig> {
   const db = getDb();
-  const configResult = await db.execute("select * from truck_config limit 1");
+  const truckId = await getCurrentTruckId();
+  const configResult = await db.execute({
+    sql: "select * from truck_config where id = ?",
+    args: [truckId],
+  });
   const row = configResult.rows[0] as unknown as TruckConfigRow | undefined;
 
   if (!row) {
@@ -216,9 +246,10 @@ export async function getTruckConfig(): Promise<TruckConfig> {
 }
 
 export async function getOpeningHours(): Promise<OpeningHours[]> {
-  const result = await getDb().execute(
-    "select * from opening_hours order by weekday asc",
-  );
+  const result = await getDb().execute({
+    sql: "select * from opening_hours where truck_id = ? order by weekday asc",
+    args: [await getCurrentTruckId()],
+  });
 
   return (result.rows as unknown as OpeningHoursRow[]).map((entry) => ({
     id: entry.id,

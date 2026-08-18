@@ -19,7 +19,6 @@ export async function GET() {
         id: context.user.id,
         email: context.user.email,
         fullName: context.user.fullName,
-        isSuperAdmin: context.user.isSuperAdmin,
       },
       role: {
         id: context.role.id,

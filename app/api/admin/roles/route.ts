@@ -4,10 +4,7 @@ import { NextResponse } from "next/server";
 
 import { handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
-import {
-  requireStaffPermission,
-  requireSuperAdmin,
-} from "@/lib/auth/staff-session";
+import { requireStaffPermission } from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
 import { getCurrentTruckId } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
@@ -33,9 +30,10 @@ export async function GET() {
   try {
     await requireStaffPermission("roles.manage");
 
-    const result = await getDb().execute(
-      "select * from role order by is_system desc, name asc",
-    );
+    const result = await getDb().execute({
+      sql: "select * from role where truck_id = ? order by is_system desc, name asc",
+      args: [await getCurrentTruckId()],
+    });
     const roles = (result.rows as unknown as RoleRow[]).map(mapRole);
 
     return NextResponse.json({ roles });
@@ -46,7 +44,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const context = await requireSuperAdmin();
+    const context = await requireStaffPermission("roles.manage");
     const body = await parseJsonBody(request, roleCreateSchema);
     const id = randomUUID();
 
