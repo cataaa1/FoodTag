@@ -95,6 +95,20 @@ const MAX_IMAGE_UPLOAD_BYTES = 1_600_000;
 const MAX_IMAGE_DIMENSION = 1600;
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
+/**
+ * Los formularios trabajan en pesos, que es lo que el usuario escribe y lo que
+ * dice la etiqueta del campo. La base guarda centavos. Antes se mandaba el
+ * numero tal cual, asi que cargar 2800 quedaba guardado como $28.
+ */
+function pesosToCents(value: string) {
+  const pesos = Number(String(value).replace(",", "."));
+  return Number.isFinite(pesos) ? Math.round(pesos * 100) : 0;
+}
+
+function centsToPesos(cents: number) {
+  return String(cents / 100);
+}
+
 function formatPrice(cents: number) {
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
@@ -109,12 +123,17 @@ function itemToForm(item: MenuItem): ItemForm {
     categoryId: item.category_id,
     name: item.name,
     description: item.description ?? "",
-    priceCents: String(item.price_cents),
+    priceCents: centsToPesos(item.price_cents),
     photoUrl: item.photo_url ?? "",
     available: item.available,
     hasVariants: item.has_variants,
     position: String(item.position),
-    variants: item.variants,
+    // El campo se sigue llamando price_cents por el tipo compartido, pero
+    // dentro del formulario contiene pesos, igual que el precio base.
+    variants: item.variants.map((variant) => ({
+      ...variant,
+      price_cents: Number(centsToPesos(variant.price_cents)),
+    })),
     modifiers: item.modifiers,
   };
 }
@@ -214,7 +233,7 @@ export function MenuManager() {
         categoryId: itemForm.categoryId,
         name: itemForm.name,
         description: itemForm.description || null,
-        priceCents: Number(itemForm.priceCents),
+        priceCents: pesosToCents(itemForm.priceCents),
         photoUrl: itemForm.photoUrl || null,
         available: itemForm.available,
         hasVariants: itemForm.hasVariants,
@@ -223,7 +242,7 @@ export function MenuManager() {
           ? itemForm.variants.map((variant, index) => ({
               id: variant.id,
               name: variant.name,
-              priceCents: Number(variant.price_cents),
+              priceCents: pesosToCents(String(variant.price_cents)),
               available: variant.available,
               position: variant.position ?? index,
             }))
@@ -538,7 +557,10 @@ export function MenuManager() {
                 setCategoryForm(EMPTY_CATEGORY_FORM);
               }}
               onChange={setCategoryForm}
-              onSubmit={() => categoryMutation.mutate()}
+              onSubmit={() => {
+                if (!categoryMutation.isPending) categoryMutation.mutate();
+              }}
+              saving={categoryMutation.isPending}
             />
           ) : null}
         </aside>
@@ -582,7 +604,10 @@ export function MenuManager() {
           onChange={setItemForm}
           onClose={closeItemModal}
           onImportImage={importOptimizedItemImage}
-          onSubmit={() => itemMutation.mutate()}
+          onSubmit={() => {
+            if (!itemMutation.isPending) itemMutation.mutate();
+          }}
+          saving={itemMutation.isPending}
         />
       ) : null}
     </AdminShell>
@@ -594,11 +619,13 @@ function CategoryFormPanel({
   onCancel,
   onChange,
   onSubmit,
+  saving,
 }: {
   form: CategoryForm;
   onCancel: () => void;
   onChange: React.Dispatch<React.SetStateAction<CategoryForm>>;
   onSubmit: () => void;
+  saving: boolean;
 }) {
   return (
     <div className="mt-3 space-y-2 rounded-[10px] border border-[#e8e8e8] bg-[#fafafa] p-3 dark:border-[#2e2e2e] dark:bg-[#242424]">
@@ -618,8 +645,13 @@ function CategoryFormPanel({
         onChange={(checked) => onChange((current) => ({ ...current, visible: checked }))}
       />
       <div className="flex gap-2">
-        <button className="admin-primary-button flex-1" onClick={onSubmit} type="button">
-          Guardar
+        <button
+          className="admin-primary-button flex-1 disabled:opacity-60"
+          disabled={saving}
+          onClick={onSubmit}
+          type="button"
+        >
+          {saving ? "Guardando..." : "Guardar"}
         </button>
         <button className="admin-muted-button flex-1" onClick={onCancel} type="button">
           Cancelar
@@ -740,6 +772,7 @@ function ItemModal({
   onClose,
   onImportImage,
   onSubmit,
+  saving,
 }: {
   categories: Category[];
   form: ItemForm;
@@ -749,6 +782,7 @@ function ItemModal({
   onClose: () => void;
   onImportImage: (file: File | undefined) => void;
   onSubmit: () => void;
+  saving: boolean;
 }) {
   const hasMods = form.modifiers.length > 0;
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -1020,8 +1054,13 @@ function ItemModal({
         </div>
 
         <div className="mt-6 flex gap-2.5">
-          <button className="admin-primary-button flex-[2]" onClick={onSubmit} type="button">
-            {form.id ? "Guardar cambios" : "Crear ítem"}
+          <button
+            className="admin-primary-button flex-[2] disabled:opacity-60"
+            disabled={saving}
+            onClick={onSubmit}
+            type="button"
+          >
+            {saving ? "Guardando..." : form.id ? "Guardar cambios" : "Crear ítem"}
           </button>
           <button className="admin-muted-button flex-1" onClick={onClose} type="button">
             Cancelar

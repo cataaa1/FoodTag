@@ -174,6 +174,7 @@ export function DashboardOverview() {
   const canWriteMenu = permissions.includes("menu.write");
   const isPlatformAdmin = Boolean(sessionQuery.data?.isPlatformAdmin);
 
+
   const dashboardQuery = useQuery({
     queryKey: ["admin", "dashboard", "today"],
     queryFn: () => fetchJson<{ dashboard: DashboardToday }>("/api/admin/dashboard/today"),
@@ -191,6 +192,43 @@ export function DashboardOverview() {
   const truckStatus = dashboard?.truckStatus ?? publicStatusQuery.data;
   const accentColor = normalizeHexColor(truckStatus?.primaryColor);
   const accentTextColor = getContrastColor(accentColor);
+
+  // Candidatos por orden de utilidad. Se muestran los primeros 3 que el rol
+  // puede usar, asi la grilla de 3 columnas queda siempre completa para todos.
+  const quickActions = [
+    {
+      show: isPlatformAdmin,
+      href: "/superadmin",
+      icon: "🚚",
+      label: "Ver todos los foodtrucks",
+      color: "#a855f7",
+    },
+    {
+      show: permissions.includes("orders.read"),
+      href: "/staff/kanban",
+      icon: "📋",
+      label: "Ir al Kanban",
+      color: "#3b82f6",
+    },
+    {
+      show: canWriteMenu,
+      href: "/admin/menu",
+      icon: "🍔",
+      label: "Gestionar menú",
+      color: accentColor,
+    },
+    {
+      show: canViewDashboard,
+      href: "/admin/orders",
+      icon: "🧾",
+      label: "Ver pedidos",
+      color: "#22c55e",
+    },
+    { show: true, href: "/admin/settings", icon: "⚙️", label: "Ir a configuración", color: "#eab308" },
+    { show: true, href: "/menu", icon: "👀", label: "Ver el menú público", color: "#14b8a6" },
+  ]
+    .filter((action) => action.show)
+    .slice(0, 3);
 
   const truckStatusMetric = {
     label: "Estado del truck",
@@ -319,26 +357,15 @@ export function DashboardOverview() {
           Accesos rapidos
         </div>
         <div className="grid gap-2 md:grid-cols-3">
-          {isPlatformAdmin ? (
+          {quickActions.map((action) => (
             <QuickAction
-              color="#a855f7"
-              href="/superadmin"
-              icon="🚚"
-              label="Ver todos los foodtrucks"
+              color={action.color}
+              href={action.href}
+              icon={action.icon}
+              key={action.href}
+              label={action.label}
             />
-          ) : null}
-          <QuickAction color="#3b82f6" href="/staff/kanban" icon="📋" label="Ir al Kanban" />
-          <QuickAction color="#ef4444" href="/admin/hours" icon="⏸" label="Horarios y pausa" />
-          {canWriteMenu ? (
-            <QuickAction color={accentColor} href="/admin/menu" icon="🍔" label="Gestionar menu" />
-          ) : (
-            <QuickAction
-              color={accentColor}
-              href="/admin/settings"
-              icon="⚙️"
-              label="Ir a configuracion"
-            />
-          )}
+          ))}
         </div>
       </section>
 
