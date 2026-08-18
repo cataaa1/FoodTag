@@ -15,6 +15,17 @@ const beepSoundSchema = z.enum(["classic", "soft", "marcado"]);
 
 export const adminSettingsPatchSchema = z.object({
   name: z.string().trim().min(2, "El nombre es obligatorio").max(80),
+  // Identificador de la URL publica del truck: foodtag.app/t/<slug>
+  slug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(3, "Mínimo 3 caracteres")
+    .max(40)
+    .regex(
+      /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+      "Usá solo minúsculas, números y guiones (sin espacios ni acentos)",
+    ),
   address: z.string().trim().min(2, "La dirección es obligatoria").max(120),
   publicTagline: z.string().trim().min(2).max(140),
   instagramHandle: z.string().trim().max(40).nullable(),

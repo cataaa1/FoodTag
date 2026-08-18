@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { downloadQr, printQr, useTruckQr } from "@/components/shared/truck-qr";
 import { fetchJson } from "@/lib/utils/http";
 
 type Truck = {
@@ -42,6 +43,7 @@ export function SuperadminHome() {
   const [form, setForm] = useState<NewTruckForm>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [qrTruckId, setQrTruckId] = useState<string | null>(null);
 
   const sessionQuery = useQuery({
     queryKey: ["platform", "session"],
@@ -161,14 +163,31 @@ export function SuperadminHome() {
                   {truck.ordersToday} pedidos hoy
                 </p>
               </div>
-              <button
-                className="rounded-[10px] bg-[#f97316] px-5 py-2.5 text-[13px] font-black text-[#1c1009] transition active:scale-[0.98] disabled:opacity-50"
-                disabled={enterMutation.isPending}
-                onClick={() => enterMutation.mutate(truck.id)}
-                type="button"
-              >
-                Entrar
-              </button>
+              <div className="flex gap-2">
+                <button
+                  className="rounded-[10px] border border-[#2e2e2e] px-4 py-2.5 text-[13px] font-bold text-[#b4b4b4] transition hover:text-white"
+                  onClick={() =>
+                    setQrTruckId((current) => (current === truck.id ? null : truck.id))
+                  }
+                  type="button"
+                >
+                  {qrTruckId === truck.id ? "Ocultar QR" : "Ver QR"}
+                </button>
+                <button
+                  className="rounded-[10px] bg-[#f97316] px-5 py-2.5 text-[13px] font-black text-[#1c1009] transition active:scale-[0.98] disabled:opacity-50"
+                  disabled={enterMutation.isPending}
+                  onClick={() => enterMutation.mutate(truck.id)}
+                  type="button"
+                >
+                  Entrar
+                </button>
+              </div>
+
+              {qrTruckId === truck.id ? (
+                <div className="w-full border-t border-[#2e2e2e] pt-4">
+                  <TruckQrBlock name={truck.name} slug={truck.slug} />
+                </div>
+              ) : null}
             </article>
           ))}
 
@@ -286,6 +305,55 @@ export function SuperadminHome() {
         )}
       </div>
     </main>
+  );
+}
+
+function TruckQrBlock({ name, slug }: { name: string; slug: string }) {
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const url = slug ? `${origin}/t/${slug}` : null;
+  const dataUrl = useTruckQr(url, 320);
+
+  if (!slug) {
+    return (
+      <p className="text-[13px] text-[#8a8a8a]">
+        Este foodtruck todavía no tiene identificador. Definilo desde su
+        Configuración para poder generar el QR.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-4">
+      <div className="rounded-xl bg-white p-2">
+        {dataUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img alt={`QR de ${name}`} className="size-[120px]" src={dataUrl} />
+        ) : (
+          <div className="size-[120px]" />
+        )}
+      </div>
+      <div className="min-w-[200px] flex-1">
+        <p className="break-all font-mono text-[12px] text-[#8a8a8a]">{url}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            className="rounded-[10px] border border-[#2e2e2e] px-3.5 py-2 text-[12px] font-bold text-[#b4b4b4] transition hover:text-white disabled:opacity-40"
+            disabled={!dataUrl}
+            onClick={() => dataUrl && printQr(dataUrl, name, url ?? "")}
+            type="button"
+          >
+            Imprimir
+          </button>
+          <button
+            className="rounded-[10px] border border-[#2e2e2e] px-3.5 py-2 text-[12px] font-bold text-[#b4b4b4] transition hover:text-white disabled:opacity-40"
+            disabled={!dataUrl}
+            onClick={() => dataUrl && downloadQr(dataUrl, slug)}
+            type="button"
+          >
+            Descargar
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

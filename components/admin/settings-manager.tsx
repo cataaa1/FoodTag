@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { AccountPanel, useAdminSession } from "@/components/admin/account-panel";
 import { AdminShell } from "@/components/admin/admin-shell";
+import { QrPanel } from "@/components/admin/qr-panel";
 import { useTransientMessage } from "@/hooks/use-transient-message";
 import { CUSTOM_SOUND_STORAGE_KEY, playBeeperSound } from "@/lib/utils/beeper";
 import { optimizeImageFile } from "@/lib/utils/client-image";
@@ -14,6 +15,7 @@ import { fetchJson } from "@/lib/utils/http";
 type TruckSettings = {
   id: string;
   name: string;
+  slug: string;
   address: string;
   logoUrl: string | null;
   brandIcon: string;
@@ -29,6 +31,7 @@ type TruckSettings = {
 
 type SettingsForm = {
   name: string;
+  slug: string;
   address: string;
   logoUrl: string | null;
   brandIcon: string;
@@ -44,6 +47,7 @@ type SettingsForm = {
 
 const EMPTY_FORM: SettingsForm = {
   name: "",
+  slug: "",
   address: "",
   logoUrl: null,
   brandIcon: "🚚",
@@ -56,6 +60,8 @@ const EMPTY_FORM: SettingsForm = {
   allowOrderModifications: true,
   customerPickupCooldownSeconds: 15,
 };
+
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const TIMEZONES = [
   "America/Argentina/Buenos_Aires",
@@ -76,6 +82,7 @@ const MAX_IMAGE_DIMENSION = 1600;
 function settingsToForm(settings: TruckSettings): SettingsForm {
   return {
     name: settings.name,
+    slug: settings.slug,
     address: settings.address,
     logoUrl: settings.logoUrl,
     brandIcon: settings.brandIcon,
@@ -400,6 +407,35 @@ export function SettingsManager() {
                 </div>
               </div>
             </div>
+          </Panel>
+
+          <Panel eyebrow="Link público" title="Identificador y código QR">
+            <div className="mb-5 max-w-md">
+              <Field label="Identificador en la URL">
+                <input
+                  className="admin-input"
+                  onChange={(event) =>
+                    updateForm(
+                      "slug",
+                      event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+                    )
+                  }
+                  placeholder="el-smash-del-barrio"
+                  value={form.slug}
+                />
+              </Field>
+              {!SLUG_PATTERN.test(form.slug) ? (
+                <p className="mt-1.5 text-[12px] font-semibold text-[#ef4444]">
+                  Usá al menos 3 caracteres: minúsculas, números y guiones.
+                </p>
+              ) : null}
+            </div>
+
+            <QrPanel
+              disabled={!SLUG_PATTERN.test(form.slug)}
+              slug={form.slug}
+              truckName={form.name || "Tu foodtruck"}
+            />
           </Panel>
 
           <Panel eyebrow="Imagen" title="Foto del landing del menú">

@@ -6,6 +6,7 @@ import type { OpeningHours, TruckConfig } from "@/lib/types/domain";
 const baseConfig: TruckConfig = {
   id: "00000000-0000-0000-0000-000000000001",
   name: "FoodTag Truck",
+  slug: "foodtag-truck",
   address: "Av. Corrientes 1500",
   heroImageUrl: null,
   publicTagline: "Food Truck · Av. Corrientes 1500",

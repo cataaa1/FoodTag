@@ -15,6 +15,7 @@ import { formatTimeWindow, formatWeekday } from "@/lib/utils/format";
 type TruckConfigRow = {
   id: string;
   name: string;
+  slug: string | null;
   updated_at: string;
   logo_url: string | null;
   brand_icon: string;
@@ -256,6 +257,7 @@ export async function getTruckConfig(): Promise<TruckConfig> {
   return {
     id: row.id,
     name: row.name,
+    slug: row.slug ?? "",
     address: profile?.address ?? "Av. Corrientes 1500",
     heroImageUrl: profile?.hero_image_url ?? null,
     publicTagline: profile?.public_tagline ?? "Food Truck · Av. Corrientes 1500",

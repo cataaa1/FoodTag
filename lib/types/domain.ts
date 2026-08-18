@@ -5,6 +5,7 @@ export type PermissionKey = (typeof PERMISSIONS)[number];
 export type TruckConfig = {
   id: string;
   name: string;
+  slug: string;
   address: string;
   heroImageUrl: string | null;
   publicTagline: string;

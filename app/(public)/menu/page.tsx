@@ -1,7 +1,7 @@
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
 
 import { MenuScreen } from "@/components/customer/menu-screen";
-import { ScanQrScreen } from "@/components/customer/scan-qr-screen";
+import { TruckPickerScreen } from "@/components/customer/truck-picker-screen";
 import { getMenuData } from "@/lib/data/menu";
 import { getTruckStatus, isTruckAmbiguous } from "@/lib/data/truck-status";
 
@@ -12,10 +12,11 @@ type Props = {
 export default async function MenuPage({ searchParams }: Props) {
   const { handoff, truck } = await searchParams;
 
-  // Sin QR escaneado y con varios foodtrucks, no hay forma de saber de cual
-  // quiere comprar: mostrar uno al azar es peor que pedirle que escanee.
+  // Sin QR escaneado y con varios foodtrucks no hay forma de saber de cual
+  // quiere comprar, asi que en vez de elegir uno al azar se los mostramos
+  // todos para que elija. Con un solo truck se entra directo, sin friccion.
   if (await isTruckAmbiguous()) {
-    return <ScanQrScreen />;
+    return <TruckPickerScreen />;
   }
 
   const queryClient = new QueryClient();

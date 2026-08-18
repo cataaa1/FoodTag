@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
-import { handleRouteError } from "@/lib/api/errors";
+import { ApiError, handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
@@ -29,12 +29,25 @@ export async function PATCH(request: Request) {
     const config = await getTruckConfig();
     const db = getDb();
 
+    const slugTaken = await db.execute({
+      sql: "select id from truck_config where slug = ? and id <> ?",
+      args: [body.slug, config.id],
+    });
+    if (slugTaken.rows.length) {
+      throw new ApiError(
+        409,
+        "CONFLICT",
+        "Ese identificador ya lo usa otro foodtruck. Elegí otro.",
+      );
+    }
+
     await db.batch(
       [
         {
           sql: `
             update truck_config set
               name = ?,
+              slug = ?,
               logo_url = ?,
               brand_icon = ?,
               primary_color = ?,
@@ -46,6 +59,7 @@ export async function PATCH(request: Request) {
           `,
           args: [
             body.name,
+            body.slug,
             body.logoUrl,
             body.brandIcon,
             body.primaryColor,
