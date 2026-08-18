@@ -75,6 +75,7 @@ type TruckIdentity = {
   brandIcon: string;
   primaryColor: string;
   customerPickupCooldownSeconds: number;
+  brandingVersion: string;
 };
 
 type AdvanceItemInput = {
@@ -290,7 +291,7 @@ export function StaffKanban() {
     queryKey: ["truck-status"],
     queryFn: () => fetchJson<TruckIdentity>("/api/customer/truck-status"),
   });
-  const brandingQuery = useTruckBranding();
+  const brandingQuery = useTruckBranding(identityQuery.data?.brandingVersion);
 
   const orders = ordersQuery.data?.orders ?? EMPTY_ORDERS;
   const identity = identityQuery.data;

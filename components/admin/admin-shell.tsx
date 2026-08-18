@@ -27,6 +27,7 @@ type TruckShellStatus = {
   truckName: string;
   brandIcon: string;
   primaryColor: string;
+  brandingVersion: string;
 };
 
 type AdminSession = {
@@ -138,7 +139,7 @@ export function AdminShell({
     queryKey: ["admin", "session"],
     queryFn: () => fetchJson<AdminSession>("/api/admin/session"),
   });
-  const brandingQuery = useTruckBranding();
+  const brandingQuery = useTruckBranding(identityQuery.data?.brandingVersion);
 
   const identity = identityQuery.data;
   const permissions = sessionQuery.data?.permissions ?? null;

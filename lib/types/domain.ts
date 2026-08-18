@@ -20,6 +20,7 @@ export type TruckConfig = {
   customerPickupCooldownSeconds: number;
   pausedManualAt: string | null;
   pausedReason: string | null;
+  brandingVersion: string;
 };
 
 export type OpeningHours = {
@@ -198,6 +199,12 @@ export type TruckStatus = {
   allowOrderModifications: boolean;
   beepSoundId: string;
   customerPickupCooldownSeconds: number;
+  /**
+   * Cambia cada vez que se guarda el logo o la foto del landing. Los clientes
+   * lo usan para armar la URL del branding, asi que un cambio de identidad
+   * invalida solo, sin depender de que ningun cache expire.
+   */
+  brandingVersion: string;
 };
 
 /** Identidad visual del truck. Cambia muy de vez en cuando: se cachea fuerte. */

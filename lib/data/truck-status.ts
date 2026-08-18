@@ -10,6 +10,7 @@ import { formatTimeWindow, formatWeekday } from "@/lib/utils/format";
 type TruckConfigRow = {
   id: string;
   name: string;
+  updated_at: string;
   logo_url: string | null;
   brand_icon: string;
   primary_color: string;
@@ -23,6 +24,7 @@ type TruckConfigRow = {
 
 type TruckProfileRow = {
   address: string;
+  updated_at: string;
   hero_image_url: string | null;
   public_tagline: string;
   instagram_handle: string | null;
@@ -36,6 +38,20 @@ type OpeningHoursRow = {
   closes_at: string | null;
   closed: number;
 };
+
+/**
+ * Token derivado de los updated_at de truck_config y truck_profile. Va dentro
+ * de la URL del branding: mientras no cambie, cualquier cache puede quedarselo
+ * para siempre; cuando cambia, la URL es otra y nadie puede servir lo viejo.
+ */
+function buildBrandingVersion(
+  configUpdatedAt: string,
+  profileUpdatedAt: string | null,
+) {
+  const compact = (value: string | null) => (value ?? "").replace(/\D/g, "");
+
+  return `${compact(configUpdatedAt)}-${compact(profileUpdatedAt)}`;
+}
 
 function getLocalizedNow(timezone: string) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -128,11 +144,31 @@ export function buildTruckStatus(
     allowOrderModifications: config.allowOrderModifications,
     beepSoundId: config.beepSoundId,
     customerPickupCooldownSeconds: config.customerPickupCooldownSeconds,
+    brandingVersion: config.brandingVersion,
     todayHoursLabel:
       todaysHours && !todaysHours.closed
         ? formatTimeWindow(todaysHours.opensAt, todaysHours.closesAt)
         : "Cerrado hoy",
   };
+}
+
+/**
+ * El truck "actual". Hoy hay uno solo y devuelve ese. Cuando el sistema sea
+ * multi-tenant, esto pasa a resolverse por request: del staff_user.truck_id
+ * para el panel, y del slug de la URL para el cliente. Que todas las escrituras
+ * pasen ya por aca hace que ese cambio sea un solo lugar y no doce.
+ */
+export async function getCurrentTruckId(): Promise<string> {
+  const result = await getDb().execute(
+    "select id from truck_config order by created_at asc limit 1",
+  );
+  const row = result.rows[0] as unknown as { id: string } | undefined;
+
+  if (!row) {
+    throw new Error("No hay configuración del truck. Corré npm run seed.");
+  }
+
+  return row.id;
 }
 
 export async function getTruckConfig(): Promise<TruckConfig> {
@@ -147,7 +183,7 @@ export async function getTruckConfig(): Promise<TruckConfig> {
   const profileResult = await db.execute({
     sql: `
       select address, hero_image_url, public_tagline, instagram_handle,
-        allow_order_modifications
+        allow_order_modifications, updated_at
       from truck_profile
       where truck_config_id = ?
     `,
@@ -175,6 +211,7 @@ export async function getTruckConfig(): Promise<TruckConfig> {
     customerPickupCooldownSeconds: row.customer_pickup_cooldown_seconds,
     pausedManualAt: row.paused_manual_at,
     pausedReason: row.paused_reason,
+    brandingVersion: buildBrandingVersion(row.updated_at, profile?.updated_at ?? null),
   } satisfies TruckConfig;
 }
 

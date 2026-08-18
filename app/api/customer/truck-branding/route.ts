@@ -15,9 +15,10 @@ export async function GET() {
 
     return NextResponse.json(branding, {
       headers: {
-        // 5 min en el CDN; si el admin cambia el logo, se ve al minuto siguiente.
-        "Cache-Control":
-          "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
+        // Se cachea agresivo a proposito: el parametro ?v= de la URL cambia
+        // cuando el admin guarda un logo nuevo, asi que una respuesta cacheada
+        // nunca puede quedar vieja.
+        "Cache-Control": "public, max-age=31536000, immutable",
       },
     });
   } catch (error) {

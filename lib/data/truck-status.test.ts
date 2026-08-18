@@ -21,6 +21,7 @@ const baseConfig: TruckConfig = {
   customerPickupCooldownSeconds: 15,
   pausedManualAt: null,
   pausedReason: null,
+  brandingVersion: "20260101000000-20260101000000",
 };
 
 const baseHours: OpeningHours[] = [

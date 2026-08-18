@@ -10,6 +10,7 @@ import {
   requireSuperAdmin,
 } from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
+import { getCurrentTruckId } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
 import { staffUserCreateSchema } from "@/lib/validators/menu";
 
@@ -80,11 +81,19 @@ export async function POST(request: Request) {
     await db.execute({
       sql: `
         insert into staff_user (
-          id, email, full_name, password_hash, role_id, active
+          id, truck_id, email, full_name, password_hash, role_id, active
         )
-        values (?, ?, ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, ?, ?)
       `,
-      args: [id, body.email, body.fullName, hashPassword(body.password), body.roleId, body.active ? 1 : 0],
+      args: [
+        id,
+        await getCurrentTruckId(),
+        body.email,
+        body.fullName,
+        hashPassword(body.password),
+        body.roleId,
+        body.active ? 1 : 0,
+      ],
     });
 
     await writeAuditLog({

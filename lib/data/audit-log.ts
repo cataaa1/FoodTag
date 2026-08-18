@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { getCurrentTruckId } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
 
 type AuditLogRow = {
@@ -89,6 +90,7 @@ export async function writeAuditLog(input: AuditLogWriteInput): Promise<void> {
     sql: `
       insert into audit_log (
         id,
+        truck_id,
         actor_user_id,
         action,
         target_type,
@@ -96,10 +98,11 @@ export async function writeAuditLog(input: AuditLogWriteInput): Promise<void> {
         reason,
         metadata_json
       )
-      values (?, ?, ?, ?, ?, ?, ?)
+      values (?, ?, ?, ?, ?, ?, ?, ?)
     `,
     args: [
       randomUUID(),
+      await getCurrentTruckId(),
       input.actorUserId,
       input.action,
       input.targetType,

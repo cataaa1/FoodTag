@@ -6,6 +6,7 @@ import { ApiError, handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
+import { getCurrentTruckId } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
 import { menuItemCreateSchema } from "@/lib/validators/menu";
 
@@ -171,13 +172,14 @@ export async function POST(request: Request) {
     await db.execute({
       sql: `
         insert into menu_item (
-          id, category_id, name, description, price_cents, photo_url,
+          id, truck_id, category_id, name, description, price_cents, photo_url,
           available, has_variants, position
         )
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       args: [
         id,
+        await getCurrentTruckId(),
         body.categoryId,
         body.name,
         body.description,

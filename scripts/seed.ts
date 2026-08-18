@@ -9,7 +9,11 @@ import { migrateDb } from "../lib/db/migrate";
 
 loadEnv({ path: ".env.local" });
 
-async function upsertRole(name: string, permissions: readonly string[]) {
+async function upsertRole(
+  truckId: string,
+  name: string,
+  permissions: readonly string[],
+) {
   const db = getDb();
   const result = await db.execute({
     sql: "select id from role where name = @name",
@@ -20,13 +24,14 @@ async function upsertRole(name: string, permissions: readonly string[]) {
 
   await db.execute({
     sql: `
-      insert into role (id, name, is_system, permissions_json)
-      values (@id, @name, 1, @permissionsJson)
+      insert into role (id, truck_id, name, is_system, permissions_json)
+      values (@id, @truckId, @name, 1, @permissionsJson)
       on conflict(name) do update set
+        truck_id = excluded.truck_id,
         is_system = excluded.is_system,
         permissions_json = excluded.permissions_json
     `,
-    args: { id, name, permissionsJson: JSON.stringify(permissions) },
+    args: { id, truckId, name, permissionsJson: JSON.stringify(permissions) },
   });
 
   return id;
@@ -88,7 +93,7 @@ async function seedTruckProfile(truckConfigId: string) {
   });
 }
 
-async function seedOpeningHours() {
+async function seedOpeningHours(truckId: string) {
   const db = getDb();
   const hours = [
     { weekday: 0, opensAt: null, closesAt: null, closed: 1 },
@@ -103,19 +108,19 @@ async function seedOpeningHours() {
   for (const entry of hours) {
     await db.execute({
       sql: `
-        insert into opening_hours (id, weekday, opens_at, closes_at, closed)
-        values (@id, @weekday, @opensAt, @closesAt, @closed)
-        on conflict(weekday) do update set
+        insert into opening_hours (id, truck_id, weekday, opens_at, closes_at, closed)
+        values (@id, @truckId, @weekday, @opensAt, @closesAt, @closed)
+        on conflict(truck_id, weekday) do update set
           opens_at = excluded.opens_at,
           closes_at = excluded.closes_at,
           closed = excluded.closed
       `,
-      args: { id: randomUUID(), ...entry },
+      args: { id: randomUUID(), truckId, ...entry },
     });
   }
 }
 
-async function seedAdmin(adminRoleId: string) {
+async function seedAdmin(truckId: string, adminRoleId: string) {
   const env = getServerEnv();
   const db = getDb();
   const email = env.SEED_ADMIN_EMAIL ?? "admin@foodtag.ar";
@@ -131,10 +136,11 @@ async function seedAdmin(adminRoleId: string) {
   await db.execute({
     sql: `
       insert into staff_user (
-        id, email, full_name, password_hash, role_id, active, is_super_admin
+        id, truck_id, email, full_name, password_hash, role_id, active, is_super_admin
       )
-      values (@id, @email, @fullName, @passwordHash, @roleId, 1, 1)
+      values (@id, @truckId, @email, @fullName, @passwordHash, @roleId, 1, 1)
       on conflict(email) do update set
+        truck_id = excluded.truck_id,
         full_name = excluded.full_name,
         role_id = excluded.role_id,
         active = 1,
@@ -142,6 +148,7 @@ async function seedAdmin(adminRoleId: string) {
     `,
     args: {
       id: existing?.id ?? randomUUID(),
+      truckId,
       email,
       fullName,
       passwordHash: hashPassword(password),
@@ -302,7 +309,7 @@ const demoMenu: SeedCategory[] = [
   },
 ];
 
-async function upsertCategory(category: SeedCategory) {
+async function upsertCategory(truckId: string, category: SeedCategory) {
   const db = getDb();
   const result = await db.execute({
     sql: "select id from category where name = @name",
@@ -323,11 +330,12 @@ async function upsertCategory(category: SeedCategory) {
   } else {
     await db.execute({
       sql: `
-        insert into category (id, name, position, visible)
-        values (@id, @name, @position, @visible)
+        insert into category (id, truck_id, name, position, visible)
+        values (@id, @truckId, @name, @position, @visible)
       `,
       args: {
         id,
+        truckId,
         name: category.name,
         position: category.position,
         visible: category.visible ? 1 : 0,
@@ -338,7 +346,11 @@ async function upsertCategory(category: SeedCategory) {
   return id;
 }
 
-async function upsertMenuItem(categoryId: string, item: SeedMenuItem) {
+async function upsertMenuItem(
+  truckId: string,
+  categoryId: string,
+  item: SeedMenuItem,
+) {
   const db = getDb();
   const result = await db.execute({
     sql: "select id from menu_item where category_id = @categoryId and name = @name",
@@ -373,16 +385,17 @@ async function upsertMenuItem(categoryId: string, item: SeedMenuItem) {
     await db.execute({
       sql: `
         insert into menu_item (
-          id, category_id, name, description, price_cents,
+          id, truck_id, category_id, name, description, price_cents,
           available, has_variants, position
         )
         values (
-          @id, @categoryId, @name, @description, @priceCents,
+          @id, @truckId, @categoryId, @name, @description, @priceCents,
           @available, @hasVariants, @position
         )
       `,
       args: {
         id,
+        truckId,
         categoryId,
         name: item.name,
         description: item.description,
@@ -483,12 +496,12 @@ async function upsertModifier(
   }
 }
 
-async function seedDemoMenu() {
+async function seedDemoMenu(truckId: string) {
   for (const category of demoMenu) {
-    const categoryId = await upsertCategory(category);
+    const categoryId = await upsertCategory(truckId, category);
 
     for (const item of category.items) {
-      const itemId = await upsertMenuItem(categoryId, item);
+      const itemId = await upsertMenuItem(truckId, categoryId, item);
 
       for (const variant of item.variants ?? []) {
         await upsertVariant(itemId, variant);
@@ -503,14 +516,16 @@ async function seedDemoMenu() {
 async function main() {
   await migrateDb();
 
-  const adminRoleId = await upsertRole("admin", SYSTEM_ROLES.admin);
-  await upsertRole("cajero", SYSTEM_ROLES.cajero);
-  await upsertRole("cocina", SYSTEM_ROLES.cocina);
+  // El truck se crea primero: roles, horarios, usuarios y menu le pertenecen.
   const truckConfigId = await seedTruckConfig();
   await seedTruckProfile(truckConfigId);
-  await seedOpeningHours();
-  await seedAdmin(adminRoleId);
-  await seedDemoMenu();
+
+  const adminRoleId = await upsertRole(truckConfigId, "admin", SYSTEM_ROLES.admin);
+  await upsertRole(truckConfigId, "cajero", SYSTEM_ROLES.cajero);
+  await upsertRole(truckConfigId, "cocina", SYSTEM_ROLES.cocina);
+  await seedOpeningHours(truckConfigId);
+  await seedAdmin(truckConfigId, adminRoleId);
+  await seedDemoMenu(truckConfigId);
 
   console.log("Turso DB migrada y seed completado con éxito");
 }

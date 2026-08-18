@@ -21,6 +21,7 @@ type TruckStatus = {
   truckName: string;
   address: string;
   brandIcon: string;
+  brandingVersion: string;
   publicTagline: string;
   instagramHandle: string | null;
   primaryColor: string;
@@ -125,7 +126,6 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
   const cartItems = useCartStore((state) => state.items);
   const cartTotals = getCartTotals(cartItems);
 
-  const brandingQuery = useTruckBranding();
   const statusQuery = useQuery({
     queryKey: ["truck-status"],
     queryFn: () => fetchJson<TruckStatus>("/api/customer/truck-status"),
@@ -135,6 +135,7 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
     queryKey: ["public-menu"],
     queryFn: () => fetchJson<{ categories: MenuCategory[] }>("/api/menu"),
   });
+  const brandingQuery = useTruckBranding(statusQuery.data?.brandingVersion);
   const sessionQuery = useQuery({
     queryKey: ["customer-session"],
     queryFn: () => fetchJson<{ customer: Customer | null }>("/api/customer/session"),
@@ -359,8 +360,10 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
               src={branding.heroImageUrl}
             />
           ) : (
+            /* pb-16 libera la franja de abajo, donde va el nombre del truck:
+               centrado a secas, el badge de 80px se superpone con el titulo. */
             <div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-2"
+              className="absolute inset-0 flex flex-col items-center justify-center gap-2 pb-16"
               style={{
                 background: `linear-gradient(135deg, ${hexToRgba(accentColor, 0.9)} 0%, ${accentColor} 48%, ${hexToRgba(accentColor, 0.28)} 100%)`,
               }}
@@ -377,8 +380,14 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
           <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/60 via-black/30 to-transparent" />
           {/* Warm fade — sits on top of the scrim at the very bottom, blends into the page */}
           <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#fff8f1] to-transparent" />
-          {/* Text — positioned above the warm zone so it stays in the dark scrim */}
-          <div className="absolute inset-x-0 bottom-[86px] text-center">
+          {/* Text — con foto sube al scrim oscuro; sin foto se apoya bajo el badge */}
+          <div
+            className={
+              branding?.heroImageUrl
+                ? "absolute inset-x-0 bottom-[86px] text-center"
+                : "absolute inset-x-0 bottom-7 text-center"
+            }
+          >
             <h1 className="text-[22px] font-black tracking-[-0.3px] text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
               {truck?.truckName ?? "FoodTag"}
             </h1>

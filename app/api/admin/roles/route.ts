@@ -9,6 +9,7 @@ import {
   requireSuperAdmin,
 } from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
+import { getCurrentTruckId } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
 import { roleCreateSchema } from "@/lib/validators/menu";
 
@@ -51,10 +52,10 @@ export async function POST(request: Request) {
 
     await getDb().execute({
       sql: `
-        insert into role (id, name, is_system, permissions_json)
-        values (?, ?, 0, ?)
+        insert into role (id, truck_id, name, is_system, permissions_json)
+        values (?, ?, ?, 0, ?)
       `,
-      args: [id, body.name, JSON.stringify(body.permissions)],
+      args: [id, await getCurrentTruckId(), body.name, JSON.stringify(body.permissions)],
     });
 
     await writeAuditLog({

@@ -509,23 +509,23 @@ export async function createCustomerOrder(
   const paymentStatus = options.paymentStatus ?? "approved";
 
   const counterResult = await db.execute({
-    sql: "select next_ticket_number from ticket_counter where service_date = ?",
-    args: [serviceDate],
+    sql: "select next_ticket_number from ticket_counter where truck_id = ? and service_date = ?",
+    args: [config.id, serviceDate],
   });
   const counterRow = counterResult.rows[0] as unknown as TicketCounterRow | undefined;
 
   let ticketNumber: number;
   if (!counterRow) {
     await db.execute({
-      sql: "insert into ticket_counter (service_date, next_ticket_number) values (?, 2)",
-      args: [serviceDate],
+      sql: "insert into ticket_counter (truck_id, service_date, next_ticket_number) values (?, ?, 2)",
+      args: [config.id, serviceDate],
     });
     ticketNumber = 1;
   } else {
     ticketNumber = counterRow.next_ticket_number;
     await db.execute({
-      sql: "update ticket_counter set next_ticket_number = next_ticket_number + 1 where service_date = ?",
-      args: [serviceDate],
+      sql: "update ticket_counter set next_ticket_number = next_ticket_number + 1 where truck_id = ? and service_date = ?",
+      args: [config.id, serviceDate],
     });
   }
 
@@ -533,12 +533,12 @@ export async function createCustomerOrder(
     {
       sql: `
         insert into customer_order (
-          id, ticket_number, service_date, customer_id, status, payment_status,
+          id, truck_id, ticket_number, service_date, customer_id, status, payment_status,
           subtotal_cents, tip_cents, total_cents
         )
-        values (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
       `,
-      args: [orderId, ticketNumber, serviceDate, customerId, paymentStatus, subtotalCents, tipCents, totalCents],
+      args: [orderId, config.id, ticketNumber, serviceDate, customerId, paymentStatus, subtotalCents, tipCents, totalCents],
     },
     ...orderItems.map((item) => ({
       sql: `

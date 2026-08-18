@@ -1,10 +1,19 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useTruckBranding } from "@/hooks/use-truck-branding";
 import { getContrastColor, normalizeHexColor } from "@/lib/utils/color";
+import { fetchJson } from "@/lib/utils/http";
+
+type TruckIdentity = {
+  truckName: string;
+  brandIcon: string;
+  primaryColor: string;
+  brandingVersion: string;
+};
 
 const REMEMBERED_ACCOUNT_KEY = "foodtag-staff-remembered-account";
 
@@ -60,8 +69,12 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
     setPassword(saved.password);
     setRemember(true);
   }, []);
-  const identityQuery = useTruckBranding();
-  const identity = identityQuery.data;
+  const statusQuery = useQuery({
+    queryKey: ["truck-status"],
+    queryFn: () => fetchJson<TruckIdentity>("/api/customer/truck-status"),
+  });
+  const brandingQuery = useTruckBranding(statusQuery.data?.brandingVersion);
+  const identity = statusQuery.data;
   const accentColor = normalizeHexColor(identity?.primaryColor);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -102,7 +115,7 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
         <header className="mb-9 text-center">
           <BrandMark
             brandIcon={identity?.brandIcon ?? "🚚"}
-            logoUrl={identity?.logoUrl ?? null}
+            logoUrl={brandingQuery.data?.logoUrl ?? null}
             primaryColor={accentColor}
           />
           <h1 className="text-2xl font-black tracking-[-0.5px]">

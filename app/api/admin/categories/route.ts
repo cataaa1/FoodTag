@@ -6,6 +6,7 @@ import { handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
+import { getCurrentTruckId } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
 import { categoryCreateSchema } from "@/lib/validators/menu";
 
@@ -52,10 +53,10 @@ export async function POST(request: Request) {
 
     await db.execute({
       sql: `
-        insert into category (id, name, position, visible)
-        values (?, ?, ?, ?)
+        insert into category (id, truck_id, name, position, visible)
+        values (?, ?, ?, ?, ?)
       `,
-      args: [id, body.name, body.position, body.visible ? 1 : 0],
+      args: [id, await getCurrentTruckId(), body.name, body.position, body.visible ? 1 : 0],
     });
 
     const categoryResult = await db.execute({
