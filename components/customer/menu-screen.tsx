@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Search, ShoppingCart, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { getCartTotals, useCartStore } from "@/components/customer/cart-store";
 import { PhoneShell, PrimaryPhoneButton } from "@/components/customer/phone-shell";
@@ -52,7 +52,6 @@ type SessionDraft = { name: string; phone: string };
 
 const EMPTY_CATEGORIES: MenuCategory[] = [];
 const MENU_ENTRY_SESSION_KEY = "foodtag-menu-entered";
-const CUSTOMER_STORAGE_KEY = "foodtag-customer";
 const ITEM_EMOJIS = ["🍔", "🍗", "🥓", "🍟", "🧀", "🥤", "💧", "🍫", "🍪"] as const;
 
 function itemEmoji(index: number) {
@@ -69,9 +68,9 @@ function readMenuEntrySession() {
   }
 }
 
-function rememberMenuEntrySession() {
+function clearMenuEntrySession() {
   try {
-    window.sessionStorage.setItem(MENU_ENTRY_SESSION_KEY, "true");
+    window.sessionStorage.removeItem(MENU_ENTRY_SESSION_KEY);
   } catch {
     // Storage can be unavailable on some mobile browsers; React state still drives the flow.
   }
@@ -112,7 +111,9 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
   const router = useRouter();
   const [draft, setDraft] = useState<SessionDraft>({ name: "", phone: "" });
   const [sessionCustomer, setSessionCustomer] = useState<Customer | null>(null);
-  const autoRestoredRef = useRef(false);
+  // Solo el carrito deja este flag, para que "volver al menu" no vuelva a pedir
+  // los datos. Se consume al montar: cualquier carga posterior de /menu (F5,
+  // pestaña nueva, link) vuelve a la landing y exige nombre y telefono.
   const [hasEnteredMenu, setHasEnteredMenu] = useState(readMenuEntrySession);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [configItem, setConfigItem] = useState<MenuItem | null>(null);
@@ -154,13 +155,6 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
       setDraft({ name: data.customer.name, phone: data.customer.phone });
       setSessionCustomer(data.customer);
       setHasEnteredMenu(true);
-      rememberMenuEntrySession();
-      try {
-        localStorage.setItem(
-          CUSTOMER_STORAGE_KEY,
-          JSON.stringify({ name: data.customer.name, phone: data.customer.phone }),
-        );
-      } catch { /* ignorar */ }
       void sessionQuery.refetch();
     },
     onError: (error) => {
@@ -168,25 +162,10 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
     },
   });
 
-  const { mutate: mutateSession } = sessionMutation;
-
-  // Auto-restore customer session from localStorage if the cookie expired.
-  // Runs once after the session query resolves to null.
+  // El flag de ingreso vale para esta carga y nada mas.
   useEffect(() => {
-    if (sessionQuery.isLoading) return;
-    if (sessionQuery.data?.customer) return;
-    if (autoRestoredRef.current) return;
-    autoRestoredRef.current = true;
-
-    try {
-      const saved = localStorage.getItem(CUSTOMER_STORAGE_KEY);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as { name?: string; phone?: string } | null;
-      if (parsed?.name && parsed?.phone) {
-        mutateSession({ name: parsed.name, phone: parsed.phone });
-      }
-    } catch { /* ignorar */ }
-  }, [sessionQuery.isLoading, sessionQuery.data?.customer, mutateSession]);
+    clearMenuEntrySession();
+  }, []);
 
   // Redirect to active ticket once session is confirmed (fresh or auto-restored).
   useEffect(() => {
@@ -245,12 +224,6 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
       setActiveCategoryId(visibleCategories[0].id);
     }
   }, [activeCategoryId, visibleCategories]);
-
-  useEffect(() => {
-    if (!customer || draft.name || draft.phone) return;
-
-    setDraft({ name: customer.name, phone: customer.phone });
-  }, [customer, draft.name, draft.phone]);
 
   useEffect(() => {
     if (!sessionQuery.data?.customer || sessionCustomer) return;

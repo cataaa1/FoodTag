@@ -16,8 +16,8 @@ async function upsertRole(
 ) {
   const db = getDb();
   const result = await db.execute({
-    sql: "select id from role where name = @name",
-    args: { name },
+    sql: "select id from role where truck_id = @truckId and name = @name",
+    args: { truckId, name },
   });
   const existing = result.rows[0] as { id: string } | undefined;
   const id = existing?.id ?? randomUUID();
@@ -26,8 +26,7 @@ async function upsertRole(
     sql: `
       insert into role (id, truck_id, name, is_system, permissions_json)
       values (@id, @truckId, @name, 1, @permissionsJson)
-      on conflict(name) do update set
-        truck_id = excluded.truck_id,
+      on conflict(truck_id, name) do update set
         is_system = excluded.is_system,
         permissions_json = excluded.permissions_json
     `,
