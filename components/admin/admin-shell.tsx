@@ -42,6 +42,7 @@ type AdminSession = {
     isSystem: boolean;
   };
   permissions: PermissionKey[];
+  isPlatformAdmin: boolean;
 };
 
 type NavItem = {
@@ -158,6 +159,7 @@ export function AdminShell({
           reviewPause: "Review pause",
           manageHours: "Manage hours",
           status: "Truck status",
+          allTrucks: "All foodtrucks",
         }
       : {
           admin: "Admin",
@@ -174,6 +176,7 @@ export function AdminShell({
           reviewPause: "Revisar pausa",
           manageHours: "Gestionar horarios",
           status: "Estado del truck",
+          allTrucks: "Ver todos los foodtrucks",
         };
 
   const accentColor = normalizeHexColor(identity?.primaryColor);
@@ -240,6 +243,16 @@ export function AdminShell({
             <p className="mt-px text-[11px] text-[#999]">FoodTag · {text.admin}</p>
           </div>
         </div>
+
+        {sessionQuery.data?.isPlatformAdmin ? (
+          <Link
+            className="mx-4 mb-3 flex items-center gap-2 rounded-[10px] border border-dashed border-[#d8d8d8] px-3 py-2.5 text-[12px] font-bold text-[#666] transition hover:border-[var(--admin-accent)] hover:text-[#111] dark:border-white/15 dark:text-white/55 dark:hover:text-white"
+            href="/superadmin"
+          >
+            <span className="text-sm">🚚</span>
+            {text.allTrucks}
+          </Link>
+        ) : null}
 
         <nav>
           {visibleNavItems.map((item) => {

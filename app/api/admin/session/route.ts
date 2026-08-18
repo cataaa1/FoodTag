@@ -26,6 +26,8 @@ export async function GET() {
         isSystem: context.role.isSystem,
       },
       permissions: context.role.permissionsJson,
+      // true cuando es el superadmin parado en este truck, no un empleado suyo
+      isPlatformAdmin: context.isPlatformAdmin,
     });
   } catch (error) {
     return handleRouteError(error);

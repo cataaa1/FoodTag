@@ -172,6 +172,7 @@ export function DashboardOverview() {
   const permissions = sessionQuery.data?.permissions ?? [];
   const canViewDashboard = permissions.includes("dashboard.view");
   const canWriteMenu = permissions.includes("menu.write");
+  const isPlatformAdmin = Boolean(sessionQuery.data?.isPlatformAdmin);
 
   const dashboardQuery = useQuery({
     queryKey: ["admin", "dashboard", "today"],
@@ -318,6 +319,14 @@ export function DashboardOverview() {
           Accesos rapidos
         </div>
         <div className="grid gap-2 md:grid-cols-3">
+          {isPlatformAdmin ? (
+            <QuickAction
+              color="#a855f7"
+              href="/superadmin"
+              icon="🚚"
+              label="Ver todos los foodtrucks"
+            />
+          ) : null}
           <QuickAction color="#3b82f6" href="/staff/kanban" icon="📋" label="Ir al Kanban" />
           <QuickAction color="#ef4444" href="/admin/hours" icon="⏸" label="Horarios y pausa" />
           {canWriteMenu ? (

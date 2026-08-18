@@ -25,6 +25,7 @@ export type AdminSession = {
     isSystem: boolean;
   };
   permissions: string[];
+  isPlatformAdmin: boolean;
 };
 
 const PERMISSION_LABELS: Record<string, string> = {
