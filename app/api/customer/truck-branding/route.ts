@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { handleRouteError } from "@/lib/api/errors";
-import { getTruckBranding } from "@/lib/data/truck-status";
+import { getPublicTruckId, getTruckBranding } from "@/lib/data/truck-status";
 
 /**
  * Logo y foto del landing. Son data URI pesados (cientos de KB) que antes
@@ -11,7 +11,7 @@ import { getTruckBranding } from "@/lib/data/truck-status";
  */
 export async function GET() {
   try {
-    const branding = await getTruckBranding();
+    const branding = await getTruckBranding(await getPublicTruckId());
 
     return NextResponse.json(branding, {
       headers: {

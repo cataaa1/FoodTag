@@ -145,7 +145,7 @@ export function SettingsManager() {
       setForm(settingsToForm(data.settings));
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin", "settings"] }),
-        queryClient.invalidateQueries({ queryKey: ["truck-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "truck-status"] }),
         queryClient.invalidateQueries({ queryKey: ["public-menu"] }),
         queryClient.invalidateQueries({ queryKey: ["admin", "dashboard", "today"] }),
       ]);

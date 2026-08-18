@@ -126,8 +126,8 @@ export function AdminShell({
   const [darkMode, setDarkMode] = useState(readStoredDarkMode);
   const [language, setLanguage] = useState<AdminLanguage>(readStoredAdminLanguage);
   const identityQuery = useQuery({
-    queryKey: ["truck-status"],
-    queryFn: () => fetchJson<TruckShellStatus>("/api/customer/truck-status"),
+    queryKey: ["admin", "truck-status"],
+    queryFn: () => fetchJson<TruckShellStatus>("/api/admin/truck-status"),
   });
   const sessionQuery = useQuery({
     queryKey: ["admin", "session"],

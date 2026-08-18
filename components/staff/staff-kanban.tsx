@@ -288,8 +288,8 @@ export function StaffKanban() {
     refetchInterval: 10_000,
   });
   const identityQuery = useQuery({
-    queryKey: ["truck-status"],
-    queryFn: () => fetchJson<TruckIdentity>("/api/customer/truck-status"),
+    queryKey: ["admin", "truck-status"],
+    queryFn: () => fetchJson<TruckIdentity>("/api/admin/truck-status"),
   });
   const brandingQuery = useTruckBranding(identityQuery.data?.brandingVersion);
 

@@ -172,14 +172,13 @@ async function getFirstTruckId(): Promise<string> {
 }
 
 /**
- * En que truck esta parada esta request.
+ * Truck del lado del STAFF: en cual esta trabajando quien opera el panel.
  *
- *   empleado del truck -> su staff_user.truck_id, no lo puede cambiar
- *   superadmin         -> el que eligio en su home (cookie de truck activo)
- *   sin sesion         -> el primero, hasta que las rutas publicas lleven el
- *                         slug del truck en la URL
+ *   empleado   -> su staff_user.truck_id, no lo puede cambiar
+ *   superadmin -> el que eligio en su home
  *
- * Todas las escrituras y lecturas acotadas pasan por aca.
+ * NO mira la cookie del cliente, a proposito. Si un admin escanea el QR de otro
+ * foodtruck para ver su menu, eso no puede cambiar lo que ve en su propio panel.
  */
 export async function getCurrentTruckId(): Promise<string> {
   const staff = await getStaffContext();
@@ -192,9 +191,20 @@ export async function getCurrentTruckId(): Promise<string> {
     return activeTruckId;
   }
 
-  // Cliente que entro por el QR: /t/<slug> le dejo fijado el truck.
+  return getFirstTruckId();
+}
+
+/**
+ * Truck del lado del CLIENTE: de cual esta comprando.
+ *
+ * Sale unicamente de la cookie que deja el QR al entrar por /t/<slug>. La
+ * sesion de staff no cuenta: en el menu publico un empleado es un cliente mas,
+ * y si todavia no eligio le toca ver la lista, no su truck por descarte.
+ */
+export async function getPublicTruckId(): Promise<string> {
   const cookieStore = await cookies();
   const publicTruckId = cookieStore.get(PUBLIC_TRUCK_COOKIE)?.value;
+
   if (publicTruckId && (await truckIdExists(publicTruckId))) {
     return publicTruckId;
   }
@@ -221,21 +231,17 @@ export async function countTrucks(): Promise<number> {
 
 /** True cuando la request no tiene truck fijado y hay mas de uno para elegir. */
 export async function isTruckAmbiguous(): Promise<boolean> {
-  if (await getStaffContext()) return false;
-  if (await getActiveTruckIdFromCookie()) return false;
-
   const cookieStore = await cookies();
   if (cookieStore.get(PUBLIC_TRUCK_COOKIE)?.value) return false;
 
   return (await countTrucks()) > 1;
 }
 
-export async function getTruckConfig(): Promise<TruckConfig> {
+export async function getTruckConfig(truckId?: string): Promise<TruckConfig> {
   const db = getDb();
-  const truckId = await getCurrentTruckId();
   const configResult = await db.execute({
     sql: "select * from truck_config where id = ?",
-    args: [truckId],
+    args: [truckId ?? (await getCurrentTruckId())],
   });
   const row = configResult.rows[0] as unknown as TruckConfigRow | undefined;
 
@@ -279,10 +285,10 @@ export async function getTruckConfig(): Promise<TruckConfig> {
   } satisfies TruckConfig;
 }
 
-export async function getOpeningHours(): Promise<OpeningHours[]> {
+export async function getOpeningHours(truckId?: string): Promise<OpeningHours[]> {
   const result = await getDb().execute({
     sql: "select * from opening_hours where truck_id = ? order by weekday asc",
-    args: [await getCurrentTruckId()],
+    args: [truckId ?? (await getCurrentTruckId())],
   });
 
   return (result.rows as unknown as OpeningHoursRow[]).map((entry) => ({
@@ -294,13 +300,17 @@ export async function getOpeningHours(): Promise<OpeningHours[]> {
   })) satisfies OpeningHours[];
 }
 
-export async function getTruckStatus(): Promise<TruckStatus> {
-  const [config, hours] = await Promise.all([getTruckConfig(), getOpeningHours()]);
+export async function getTruckStatus(truckId?: string): Promise<TruckStatus> {
+  const resolved = truckId ?? (await getCurrentTruckId());
+  const [config, hours] = await Promise.all([
+    getTruckConfig(resolved),
+    getOpeningHours(resolved),
+  ]);
   return buildTruckStatus(config, hours);
 }
 
-export async function getTruckBranding(): Promise<TruckBranding> {
-  const config = await getTruckConfig();
+export async function getTruckBranding(truckId?: string): Promise<TruckBranding> {
+  const config = await getTruckConfig(truckId);
 
   return {
     truckName: config.name,

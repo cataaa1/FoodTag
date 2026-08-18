@@ -184,8 +184,8 @@ export function DashboardOverview() {
   });
   // Fuente publica del estado del truck: la usa cocina, que no ve el dashboard.
   const publicStatusQuery = useQuery({
-    queryKey: ["truck-status"],
-    queryFn: () => fetchJson<PublicTruckStatus>("/api/customer/truck-status"),
+    queryKey: ["admin", "truck-status"],
+    queryFn: () => fetchJson<PublicTruckStatus>("/api/admin/truck-status"),
   });
 
   const dashboard = dashboardQuery.data?.dashboard;

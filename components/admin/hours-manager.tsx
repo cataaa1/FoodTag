@@ -56,8 +56,8 @@ export function HoursManager() {
     queryFn: () => fetchJson<HoursResponse>("/api/admin/hours"),
   });
   const truckStatusQuery = useQuery({
-    queryKey: ["truck-status"],
-    queryFn: () => fetchJson<TruckStatus>("/api/customer/truck-status"),
+    queryKey: ["admin", "truck-status"],
+    queryFn: () => fetchJson<TruckStatus>("/api/admin/truck-status"),
   });
 
   useEffect(() => {
@@ -77,7 +77,7 @@ export function HoursManager() {
   async function refreshStatus() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["admin", "hours"] }),
-      queryClient.invalidateQueries({ queryKey: ["truck-status"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin", "truck-status"] }),
       queryClient.invalidateQueries({ queryKey: ["public-menu"] }),
     ]);
   }

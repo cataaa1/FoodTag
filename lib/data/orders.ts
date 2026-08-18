@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/api/errors";
 import { getDb } from "@/lib/db/client";
 import {
   getCurrentTruckId,
+  getPublicTruckId,
   getTruckConfig,
   getTruckStatus,
 } from "@/lib/data/truck-status";
@@ -414,7 +415,9 @@ export async function createCustomerOrder(
   input: CreateOrderInput,
   options: CreateCustomerOrderOptions = {},
 ) {
-  const status = await getTruckStatus();
+  // El pedido pertenece al truck del que el cliente esta comprando.
+  const truckId = await getPublicTruckId();
+  const status = await getTruckStatus(truckId);
 
   if (!status.isOpen) {
     throw new ApiError(
@@ -426,7 +429,7 @@ export async function createCustomerOrder(
     );
   }
 
-  const config = await getTruckConfig();
+  const config = await getTruckConfig(truckId);
   const serviceDate = getServiceDate(config.timezone);
   const db = getDb();
 

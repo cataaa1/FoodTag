@@ -1,4 +1,4 @@
-import { getCurrentTruckId } from "@/lib/data/truck-status";
+import { getPublicTruckId } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
 import type {
   MenuCategoryWithItems,
@@ -91,7 +91,8 @@ export function mapMenuItem(
 
 export async function getMenuData() {
   const db = getDb();
-  const truckId = await getCurrentTruckId();
+  // El menu publico responde al truck del QR, no al de la sesion de staff.
+  const truckId = await getPublicTruckId();
   const [catResult, itemResult, varResult, modResult] = await Promise.all([
     db.execute({
       sql: "select * from category where truck_id = ? and visible = 1 order by position asc",

@@ -3,7 +3,11 @@ import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query
 import { MenuScreen } from "@/components/customer/menu-screen";
 import { TruckPickerScreen } from "@/components/customer/truck-picker-screen";
 import { getMenuData } from "@/lib/data/menu";
-import { getTruckStatus, isTruckAmbiguous } from "@/lib/data/truck-status";
+import {
+  getPublicTruckId,
+  getTruckStatus,
+  isTruckAmbiguous,
+} from "@/lib/data/truck-status";
 
 type Props = {
   searchParams: Promise<{ handoff?: string; truck?: string }>;
@@ -19,12 +23,13 @@ export default async function MenuPage({ searchParams }: Props) {
     return <TruckPickerScreen />;
   }
 
+  const publicTruckId = await getPublicTruckId();
   const queryClient = new QueryClient();
 
   await Promise.all([
     queryClient.prefetchQuery({
       queryKey: ["truck-status"],
-      queryFn: getTruckStatus,
+      queryFn: () => getTruckStatus(publicTruckId),
     }),
     queryClient.prefetchQuery({
       queryKey: ["public-menu"],

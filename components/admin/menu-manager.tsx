@@ -182,7 +182,7 @@ export function MenuManager() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["admin", "categories"] }),
       queryClient.invalidateQueries({ queryKey: ["admin", "menu-items"] }),
-      queryClient.invalidateQueries({ queryKey: ["truck-status"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin", "truck-status"] }),
       queryClient.invalidateQueries({ queryKey: ["public-menu"] }),
       queryClient.invalidateQueries({ queryKey: ["admin", "dashboard", "today"] }),
     ]);
