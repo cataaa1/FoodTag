@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { ApiError } from "@/lib/api/errors";
 import { getServerEnv } from "@/lib/config/env";
+import { getDb } from "@/lib/db/client";
+import { decryptToken } from "@/lib/payments/token-crypto";
 import type {
   Customer,
   CustomerOrder,
@@ -34,11 +36,13 @@ type MercadoPagoMerchantOrderSearchResponse = {
 };
 
 type PreferenceInput = {
+  truckId: string;
   customer: Customer;
   order: CustomerOrder;
 };
 
 type ModificationPreferenceInput = {
+  truckId: string;
   customer: Customer;
   order: CustomerOrder;
   request: OrderModificationRequest;
@@ -46,12 +50,34 @@ type ModificationPreferenceInput = {
 
 type MercadoPagoOrderPaymentStatus = "approved" | "rejected" | "cancelled" | "pending";
 
-function getAccessToken() {
+/**
+ * Token con el que se cobra.
+ *
+ * Cada foodtruck carga el suyo desde Configuracion, para que la plata caiga en
+ * su propia cuenta. La variable de entorno queda como respaldo: sirve para
+ * probar en local y para no romper instalaciones de un solo truck que ya la
+ * tenian configurada.
+ */
+async function getAccessToken(truckId?: string): Promise<string | null> {
+  if (truckId) {
+    const result = await getDb().execute({
+      sql: "select mp_access_token_encrypted from truck_config where id = ?",
+      args: [truckId],
+    });
+    const stored = (result.rows[0] as unknown as { mp_access_token_encrypted: string | null } | undefined)
+      ?.mp_access_token_encrypted;
+
+    if (stored) {
+      const token = decryptToken(stored);
+      if (token) return token;
+    }
+  }
+
   return getServerEnv().MERCADO_PAGO_ACCESS_TOKEN ?? null;
 }
 
-export function isMercadoPagoConfigured() {
-  return Boolean(getAccessToken());
+export async function isMercadoPagoConfigured(truckId?: string) {
+  return Boolean(await getAccessToken(truckId));
 }
 
 function centsToAmount(cents: number) {
@@ -67,7 +93,11 @@ function isPublicHttpsUrl(appUrl: string) {
   }
 }
 
-function getPreferenceReturnConfig(appUrl: string, callbackUrl: string) {
+function getPreferenceReturnConfig(
+  appUrl: string,
+  callbackUrl: string,
+  truckId: string,
+) {
   const isHttps = isPublicHttpsUrl(appUrl);
 
   // Con HTTP (localhost, Tailscale, dev) MP no puede redirigir de vuelta ni recibir webhooks.
@@ -85,15 +115,18 @@ function getPreferenceReturnConfig(appUrl: string, callbackUrl: string) {
       failure: callbackUrl,
     },
     auto_return: "approved",
-    notification_url: `${appUrl}/api/mercado-pago/webhook`,
+    // El truck viaja en la URL porque el webhook necesita saber con que token
+    // consultar el pago, y eso lo tiene que saber ANTES de consultarlo.
+    notification_url: `${appUrl}/api/mercado-pago/webhook?truck=${encodeURIComponent(truckId)}`,
   };
 }
 
 export async function createMercadoPagoPreference({
+  truckId,
   customer,
   order,
 }: PreferenceInput) {
-  const token = getAccessToken();
+  const token = await getAccessToken(truckId);
 
   if (!token) {
     throw new ApiError(500, "INTERNAL", "Mercado Pago no está configurado");
@@ -121,7 +154,7 @@ export async function createMercadoPagoPreference({
   }
 
   const callbackUrl = `${appUrl}/ticket/${order.id}`;
-  const returnConfig = getPreferenceReturnConfig(appUrl, callbackUrl);
+  const returnConfig = getPreferenceReturnConfig(appUrl, callbackUrl, truckId);
   const { localCheckout, ...remoteReturnConfig } = returnConfig;
   const preferencePayload: Record<string, unknown> = {
     items,
@@ -169,11 +202,12 @@ export async function createMercadoPagoPreference({
 }
 
 export async function createMercadoPagoModificationPreference({
+  truckId,
   customer,
   order,
   request,
 }: ModificationPreferenceInput) {
-  const token = getAccessToken();
+  const token = await getAccessToken(truckId);
 
   if (!token) {
     throw new ApiError(500, "INTERNAL", "Mercado Pago no está configurado");
@@ -181,7 +215,7 @@ export async function createMercadoPagoModificationPreference({
 
   const appUrl = getServerEnv().NEXT_PUBLIC_APP_URL;
   const callbackUrl = `${appUrl}/ticket/${order.id}`;
-  const returnConfig = getPreferenceReturnConfig(appUrl, callbackUrl);
+  const returnConfig = getPreferenceReturnConfig(appUrl, callbackUrl, truckId);
   const { localCheckout, ...remoteReturnConfig } = returnConfig;
   const response = await fetch("https://api.mercadopago.com/checkout/preferences", {
     method: "POST",
@@ -234,8 +268,8 @@ export async function createMercadoPagoModificationPreference({
   };
 }
 
-export async function getMercadoPagoPayment(paymentId: string) {
-  const token = getAccessToken();
+export async function getMercadoPagoPayment(paymentId: string, truckId?: string) {
+  const token = await getAccessToken(truckId);
 
   if (!token) {
     throw new ApiError(500, "INTERNAL", "Mercado Pago no está configurado");
@@ -268,8 +302,11 @@ export function normalizeMercadoPagoStatus(status: string): MercadoPagoOrderPaym
   return "pending";
 }
 
-export async function findMercadoPagoPaymentByPreference(preferenceId: string) {
-  const token = getAccessToken();
+export async function findMercadoPagoPaymentByPreference(
+  preferenceId: string,
+  truckId?: string,
+) {
+  const token = await getAccessToken(truckId);
 
   if (!token) {
     throw new ApiError(500, "INTERNAL", "Mercado Pago no está configurado");

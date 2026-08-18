@@ -29,7 +29,7 @@ export async function POST(
       throw new ApiError(404, "NOT_FOUND", "No encontramos ese ticket");
     }
 
-    const payment = await getMercadoPagoPayment(body.paymentId);
+    const payment = await getMercadoPagoPayment(body.paymentId, order.truckId);
 
     if (payment.externalReference && payment.externalReference !== id) {
       throw new ApiError(409, "CONFLICT", "El pago no corresponde a este pedido");

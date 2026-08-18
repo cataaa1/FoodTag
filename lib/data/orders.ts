@@ -62,6 +62,7 @@ type MenuItemModifierRow = {
 
 type OrderRow = {
   id: string;
+  truck_id: string;
   ticket_number: number;
   service_date: string;
   customer_id: string;
@@ -317,6 +318,7 @@ function mapOrder(
 ): CustomerOrder {
   return {
     id: row.id,
+    truckId: row.truck_id,
     ticketNumber: row.ticket_number,
     serviceDate: row.service_date,
     customerId: row.customer_id,

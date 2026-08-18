@@ -124,6 +124,7 @@ export function AdminShell({
 }) {
   const pathname = usePathname();
   const [darkMode, setDarkMode] = useState(readStoredDarkMode);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [language, setLanguage] = useState<AdminLanguage>(readStoredAdminLanguage);
   const identityQuery = useQuery({
     queryKey: ["admin", "truck-status"],
@@ -348,6 +349,72 @@ export function AdminShell({
       </aside>
 
       <div className="min-h-screen lg:ml-[220px]">
+        {/* La barra lateral es solo de escritorio. Sin esto, en un celular se
+            entraba al panel y no habia forma de ir a ninguna otra pantalla. */}
+        <div className="sticky top-0 z-20 border-b border-[#e8e8e8] bg-white lg:hidden dark:border-white/10 dark:bg-[#1a1a1a]">
+          <div className="flex items-center justify-between px-5 py-3">
+            <div className="flex items-center gap-2.5">
+              <BrandMark
+                brandIcon={identity?.brandIcon ?? "🚚"}
+                logoUrl={brandingQuery.data?.logoUrl ?? null}
+                primaryColor={accentColor}
+              />
+              <p className="text-[15px] font-black tracking-[-0.3px]">
+                {identity?.truckName ?? "FoodTag"}
+              </p>
+            </div>
+            <button
+              aria-expanded={mobileNavOpen}
+              aria-label="Menú de navegación"
+              className="rounded-[10px] border border-[#e8e8e8] px-3 py-2 text-[13px] font-bold dark:border-white/15"
+              onClick={() => setMobileNavOpen((open) => !open)}
+              type="button"
+            >
+              {mobileNavOpen ? "✕" : "☰"}
+            </button>
+          </div>
+
+          {mobileNavOpen ? (
+            <nav className="border-t border-[#e8e8e8] pb-2 dark:border-white/10">
+              {sessionQuery.data?.isPlatformAdmin ? (
+                <Link
+                  className="flex items-center gap-2.5 px-5 py-3 text-[14px] font-bold text-[#555] dark:text-white/60"
+                  href="/superadmin"
+                  onClick={() => setMobileNavOpen(false)}
+                >
+                  <span className="w-[22px] text-center">🚚</span>
+                  {text.allTrucks}
+                </Link>
+              ) : null}
+              {visibleNavItems.map((item) => (
+                <Link
+                  className={cn(
+                    "flex items-center gap-2.5 px-5 py-3 text-[14px] font-bold text-[#555] dark:text-white/60",
+                    pathname === item.href && "font-black",
+                  )}
+                  href={item.href}
+                  key={item.href}
+                  onClick={() => setMobileNavOpen(false)}
+                  style={pathname === item.href ? { color: accentColor } : undefined}
+                >
+                  <span className="w-[22px] text-center">{item.icon}</span>
+                  {item.label[language]}
+                </Link>
+              ))}
+              {canOpenKanban ? (
+                <Link
+                  className="flex items-center gap-2.5 px-5 py-3 text-[14px] font-bold text-[#555] dark:text-white/60"
+                  href="/staff/kanban"
+                  onClick={() => setMobileNavOpen(false)}
+                >
+                  <span className="w-[22px] text-center">📋</span>
+                  {text.goToKanban}
+                </Link>
+              ) : null}
+            </nav>
+          ) : null}
+        </div>
+
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-[#e8e8e8] bg-white px-7 py-4 dark:border-white/10 dark:bg-[#1a1a1a]">
           <div>
             <h1 className="text-xl font-black tracking-[-0.4px]">{title}</h1>

@@ -43,6 +43,7 @@ export async function POST(
 
     const payment = await findMercadoPagoPaymentByPreference(
       modificationRequest.mpPreferenceId,
+      order.truckId,
     );
 
     if (!payment) {

@@ -70,7 +70,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, duplicate: true });
     }
 
-    const payment = await getMercadoPagoPayment(paymentId);
+    // El truck viene en la URL de notificacion que se armo al crear la
+    // preferencia. Sin el, en una instalacion multi-truck no sabriamos con
+    // que token consultar el pago.
+    const truckId = new URL(request.url).searchParams.get("truck") ?? undefined;
+    const payment = await getMercadoPagoPayment(paymentId, truckId);
 
     if (payment.externalReference?.startsWith("mod:")) {
       await markModificationPaymentFromMercadoPago({

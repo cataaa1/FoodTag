@@ -8,6 +8,7 @@ import { parseJsonBody } from "@/lib/api/route";
 import { requireStaffPermission } from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
 import { getTruckConfig } from "@/lib/data/truck-status";
+import { getMaskedMpToken, setMpAccessToken } from "@/lib/payments/truck-token";
 import { getDb } from "@/lib/db/client";
 import { adminSettingsPatchSchema } from "@/lib/validators/settings";
 
@@ -16,7 +17,9 @@ export async function GET() {
     await requireStaffPermission("settings.write");
     const config = await getTruckConfig();
 
-    return NextResponse.json({ settings: config });
+    return NextResponse.json({
+      settings: { ...config, mpAccessTokenMasked: await getMaskedMpToken(config.id) },
+    });
   } catch (error) {
     return handleRouteError(error);
   }
@@ -111,6 +114,10 @@ export async function PATCH(request: Request) {
         timezone: body.timezone,
       },
     });
+
+    if (body.mpAccessToken !== undefined) {
+      await setMpAccessToken(config.id, body.mpAccessToken);
+    }
 
     revalidatePath("/menu");
     revalidatePath("/admin");

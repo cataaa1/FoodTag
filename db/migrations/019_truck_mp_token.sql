@@ -1,0 +1,11 @@
+-- Access token de Mercado Pago por foodtruck.
+--
+-- El tipo TruckConfig y el validador de horarios ya nombraban esta columna
+-- desde el MVP, pero ninguna migracion la habia creado nunca: el campo existia
+-- solo en TypeScript. Sin ella, todos los trucks cobraban con el unico token
+-- de las variables de entorno, o sea que la plata de todos caia en la misma
+-- cuenta.
+--
+-- Se guarda cifrado con AES-256-GCM (ver lib/payments/token-crypto.ts), no en
+-- texto plano: permite cobrar en nombre del truck.
+alter table truck_config add column mp_access_token_encrypted text;

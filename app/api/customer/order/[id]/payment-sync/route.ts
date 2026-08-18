@@ -27,7 +27,10 @@ export async function POST(
       return NextResponse.json({ order });
     }
 
-    const payment = await findMercadoPagoPaymentByPreference(order.mpPreferenceId);
+    const payment = await findMercadoPagoPaymentByPreference(
+      order.mpPreferenceId,
+      order.truckId,
+    );
 
     if (!payment) {
       return NextResponse.json({ order });

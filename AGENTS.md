@@ -10,17 +10,26 @@ FoodTag es además una **PWA instalable** con **Web Push** opcional. El cliente 
 
 El staff opera un **tablero Kanban con tres columnas** (Pendiente → En preparación → Listo) con sincronización **por polling cada 5 segundos** (sin realtime en MVP). El admin tiene dashboard con gestión de menú, horarios, usuarios y **roles con permisos granulares configurables**.
 
-Es un MVP **single-tenant, single-truck**, producto académico/interno de **beWeb**, sucesor conceptual de MesaQR. La diferencia clave con MesaQR: **no hay mesas, no hay pedidos colaborativos, el pago es obligatorio antes de que el pedido entre a cocina**, y **hay PWA + Web Push**.
+Es un producto académico/interno de **beWeb**, sucesor conceptual de MesaQR. La diferencia clave con MesaQR: **no hay mesas, no hay pedidos colaborativos, el pago es obligatorio antes de que el pedido entre a cocina**, y **hay PWA + Web Push**.
+
+> **Multi-tenant desde agosto 2026.** El PRD original describe un MVP single-truck; eso ya no es cierto. Hoy conviven varios foodtrucks en la misma instancia:
+>
+> - Cada truck tiene su propio menú, horarios, usuarios, roles, pedidos, numeración de tickets y cuenta de Mercado Pago.
+> - Cada truck tiene un **slug** (`truck_config.slug`) y su QR apunta a `/t/<slug>`, que fija el truck en una cookie y entra al menú.
+> - Entrar a `/menu` sin QR y con más de un truck muestra la lista para elegir.
+> - Existe un **superadmin de plataforma** (tabla `platform_admin`, aparte de `staff_user`) que crea foodtrucks y entra a cualquiera. Dentro de cada truck, el rol mayor es **admin**.
+>
+> **Regla crítica:** hay dos resoluciones de truck y no se tocan. `getCurrentTruckId()` es la del staff (sesión del empleado o truck elegido por el superadmin) y nunca mira la cookie del cliente. `getPublicTruckId()` es la del cliente (solo la cookie del QR). Mezclarlas filtra datos entre foodtrucks.
 
 Ver `PRD.md` para la especificación completa.
 
 ## Stack
 
-- **Framework:** Next.js 15 (App Router) + TypeScript estricto
-- **DB:** Supabase Postgres (acceso server-side con `service_role_key`)
-- **Auth staff:** Supabase Auth (email + password) + `@supabase/ssr`
+- **Framework:** Next.js 16 (App Router) + TypeScript estricto
+- **DB:** Turso / libSQL vía `@libsql/client`. SQL crudo, sin ORM. Migraciones propias en `db/migrations/*.sql`, aplicadas por `lib/db/migrate.ts` con tabla `_migrations`.
+- **Auth staff:** propia. Password con PBKDF2 (`lib/auth/password.ts`), sesión en JWT `jose` sobre cookie httpOnly. La misma cookie sirve al staff y al superadmin (campo `kind` en el payload).
 - **Auth cliente:** JWT custom firmado con `jose`, cookie httpOnly por dispositivo
-- **Storage de imágenes:** Supabase Storage
+- **Storage de imágenes:** data URI en la propia DB (logo, hero). Ver la advertencia de peso más abajo.
 - **UI:** Tailwind CSS + shadcn/ui + Lucide
 - **State:** Zustand (carrito local) + React Query v5 (server state + polling)
 - **Validación:** Zod en todos los route handlers y forms
@@ -36,8 +45,9 @@ Ver `PRD.md` para la especificación completa.
 1. **TypeScript estricto.** `strict: true`, `noUncheckedIndexedAccess: true`. Nunca `any`. Si hace falta escapar el tipo, usar `unknown` y validar con Zod.
 2. **Validar todo input con Zod.** En cada route handler, parsear `body`, `params` y `searchParams` con un schema. Si falla, devolver `400` con mensaje claro.
 3. **Server-side recalcula totales.** El cliente nunca decide precios, subtotales, propinas o total final. Siempre se recalcula desde la DB antes de crear la `preference` de Mercado Pago.
-4. **El browser nunca habla directo con Supabase.** Toda lectura/escritura del cliente pasa por route handlers de Next.js. Para staff, usar `@supabase/ssr` que mantiene la sesión en cookies httpOnly.
-5. **`service_role_key` solo en server.** Nunca importarla en componentes cliente ni exponerla. Vive en `lib/supabase/admin.ts`.
+4. **El browser nunca habla directo con la DB.** Toda lectura/escritura pasa por route handlers de Next.js. Las credenciales de Turso son server-only.
+5. **Toda query acotada por truck.** Cualquier `select`/`insert` sobre `category`, `menu_item`, `role`, `staff_user`, `customer_order`, `opening_hours`, `ticket_counter` o `audit_log` lleva `truck_id`. Olvidarlo filtra datos entre foodtrucks, que es la clase de bug más peligrosa del proyecto. Los tests de `lib/data/multitenant.test.ts` protegen las constraints; los filtros en las queries dependen de la revisión.
+6. **Imágenes pesadas.** El logo y el hero se guardan como data URI en la DB. Nunca devolverlos desde un endpoint que se pollee: van aparte en `/api/customer/truck-branding`, cacheado por versión. Si algún día se cargan fotos de producto, `/api/menu` va a repetir el problema.
 6. **RLS activada en todas las tablas** como segunda línea de defensa. Default-deny. La autorización primaria vive en route handlers.
 7. **Polling con React Query.** Usar `refetchInterval: 5000`, `refetchIntervalInBackground: false`, `refetchOnWindowFocus: true`. Pausar polling cuando no aplica (sin sesión, pedido cerrado, etc.). Excepción documentada: `/ticket/[id]` puede bajar a 3000ms si hace falta para el beeper.
 8. **Snapshots de precio/nombre.** Cuando un ítem del menú entra a una orden, se copian `name_snapshot` y `price_snapshot_cents`. Cambios futuros del menú no afectan órdenes pasadas. Idem variantes.

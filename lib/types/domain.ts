@@ -156,6 +156,7 @@ export type OrderModificationRequestItem = {
 
 export type CustomerOrder = {
   id: string;
+  truckId: string;
   ticketNumber: number;
   serviceDate: string;
   customerId: string;

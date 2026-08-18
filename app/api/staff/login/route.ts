@@ -3,6 +3,11 @@ import { z } from "zod";
 
 import { ApiError, handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
+import {
+  clearFailedAttempts,
+  getLockState,
+  registerFailedAttempt,
+} from "@/lib/auth/login-throttle";
 import { authenticatePlatformAdmin } from "@/lib/auth/platform-session";
 import { authenticateStaff } from "@/lib/auth/staff-session";
 import {
@@ -22,6 +27,15 @@ export async function POST(request: Request) {
   try {
     const body = await parseJsonBody(request, bodySchema);
 
+    const lock = await getLockState(body.email);
+    if (lock.locked) {
+      throw new ApiError(
+        429,
+        "TOO_MANY_ATTEMPTS",
+        `Demasiados intentos fallidos. Probá de nuevo en ${lock.minutesLeft} minuto${lock.minutesLeft === 1 ? "" : "s"}.`,
+      );
+    }
+
     // Una sola pantalla de login para los dos tipos de cuenta. El superadmin no
     // es empleado de ningun truck, asi que vive en otra tabla.
     const platformAdmin = await authenticatePlatformAdmin(body.email, body.password);
@@ -30,8 +44,11 @@ export async function POST(request: Request) {
       : await authenticateStaff(body.email, body.password);
 
     if (!platformAdmin && !context) {
+      await registerFailedAttempt(body.email);
       throw new ApiError(401, "UNAUTHORIZED", "Email o contraseña inválidos");
     }
+
+    await clearFailedAttempts(body.email);
 
     const token = platformAdmin
       ? await createPlatformSessionToken(platformAdmin.id)

@@ -12,6 +12,7 @@ import {
   createMercadoPagoPreference,
   isMercadoPagoConfigured,
 } from "@/lib/payments/mercado-pago";
+import { getPublicTruckId } from "@/lib/data/truck-status";
 import { createOrderSchema } from "@/lib/validators/customer";
 
 export async function POST(request: Request) {
@@ -27,7 +28,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const mercadoPagoEnabled = isMercadoPagoConfigured();
+    const truckId = await getPublicTruckId();
+    const mercadoPagoEnabled = await isMercadoPagoConfigured(truckId);
     const order = await createCustomerOrder(session.customerId, body, {
       paymentStatus: mercadoPagoEnabled ? "pending" : "approved",
     });
@@ -40,7 +42,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const preference = await createMercadoPagoPreference({ customer, order });
+    const preference = await createMercadoPagoPreference({ truckId, customer, order });
     await attachMercadoPagoPreference(order.id, preference.id);
 
     return NextResponse.json({

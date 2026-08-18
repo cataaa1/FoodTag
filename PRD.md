@@ -1,5 +1,20 @@
 # PRD — FoodTag
 
+> ## ⚠️ Estado actual (agosto 2026)
+>
+> Este PRD describe el MVP original y se conserva como registro de la intención
+> del producto. Dos cosas ya no son ciertas:
+>
+> - **Ya no es single-truck.** El sistema es multi-tenant: varios foodtrucks en
+>   la misma instancia, cada uno con su menú, usuarios, pedidos, numeración de
+>   tickets, QR propio y cuenta de Mercado Pago. Hay un superadmin de plataforma
+>   por encima de los admin de cada truck.
+> - **La base no es Supabase Postgres sino Turso (libSQL)**, con migraciones
+>   propias y sin ORM. La auth del staff también es propia, no de Supabase.
+>
+> Para el estado real del sistema, ver `AGENTS.md` y `README.md`.
+
+
 > **Estado:** Borrador v1 · **Autor:** beWeb · **Tipo:** MVP single-tenant
 > **Documento hermano:** `AGENTS.md` (guía técnica para agentes IA)
 

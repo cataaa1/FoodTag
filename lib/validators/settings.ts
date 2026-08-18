@@ -37,4 +37,10 @@ export const adminSettingsPatchSchema = z.object({
   allowOrderModifications: z.boolean(),
   beepSoundId: beepSoundSchema,
   customerPickupCooldownSeconds: z.number().int().min(0).max(300),
+  /**
+   * Token de Mercado Pago del truck. Solo se envia cuando se quiere cambiar:
+   *   undefined -> dejar el que ya estaba
+   *   ""        -> borrarlo y volver al de las variables de entorno
+   */
+  mpAccessToken: z.string().trim().max(500).optional(),
 });

@@ -7,6 +7,7 @@ export type ApiErrorCode =
   | "OUT_OF_STOCK"
   | "TRUCK_CLOSED"
   | "ALREADY_PAID"
+  | "TOO_MANY_ATTEMPTS"
   | "INTERNAL";
 
 export type ApiErrorPayload = {

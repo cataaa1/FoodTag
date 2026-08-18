@@ -27,6 +27,7 @@ type TruckSettings = {
   beepSoundId: string;
   allowOrderModifications: boolean;
   customerPickupCooldownSeconds: number;
+  mpAccessTokenMasked: string | null;
 };
 
 type SettingsForm = {
@@ -103,6 +104,7 @@ export function SettingsManager() {
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const customSoundRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState<SettingsForm>(EMPTY_FORM);
+  const [mpToken, setMpToken] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [customSoundName, setCustomSoundName] = useState<string | null>(() => {
@@ -130,18 +132,22 @@ export function SettingsManager() {
   }, [settingsQuery.data?.settings]);
 
   const saveMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (options?: { clearMpToken?: boolean }) =>
       fetchJson<{ settings: TruckSettings }>("/api/admin/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
           instagramHandle: form.instagramHandle.trim() || null,
+          // Solo viaja si hay intencion explicita: escribir uno nuevo, o borrarlo.
+          ...(mpToken ? { mpAccessToken: mpToken } : {}),
+          ...(options?.clearMpToken && !mpToken ? { mpAccessToken: "" } : {}),
         }),
       }),
     onSuccess: async (data) => {
       setError(null);
       setFeedback("Configuración guardada");
+      setMpToken("");
       setForm(settingsToForm(data.settings));
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin", "settings"] }),
@@ -260,6 +266,48 @@ export function SettingsManager() {
         ) : null}
 
         <div className="max-w-3xl">
+          <Panel eyebrow="Cobros" title="Mercado Pago">
+            <div className="max-w-lg">
+              <p className="mb-3 text-[13px] leading-[1.5] text-[#777] dark:text-[#b4b4b4]">
+                Cargá el access token de <strong>tu</strong> cuenta de Mercado Pago.
+                Los pagos de este foodtruck van a caer ahí y no en la de otro.
+              </p>
+              <Field label="Access token">
+                <input
+                  autoComplete="off"
+                  className="admin-input font-mono"
+                  onChange={(event) => setMpToken(event.target.value)}
+                  placeholder={
+                    settingsQuery.data?.settings.mpAccessTokenMasked
+                      ? `Guardado: ${settingsQuery.data.settings.mpAccessTokenMasked} — escribí uno nuevo para reemplazarlo`
+                      : "APP_USR-..."
+                  }
+                  type="password"
+                  value={mpToken}
+                />
+              </Field>
+              <p className="mt-2 text-[12px] leading-4 text-[#999]">
+                Se guarda cifrado y nunca se vuelve a mostrar completo. Si lo dejás
+                vacío, se conserva el que ya estaba.
+                {settingsQuery.data?.settings.mpAccessTokenMasked ? (
+                  <>
+                    {" "}
+                    <button
+                      className="font-bold text-[#ef4444] underline"
+                      onClick={() => {
+                        setMpToken("");
+                        saveMutation.mutate({ clearMpToken: true });
+                      }}
+                      type="button"
+                    >
+                      Quitar el token guardado
+                    </button>
+                  </>
+                ) : null}
+              </p>
+            </div>
+          </Panel>
+
           <Panel eyebrow="Cuenta" title="Sesión y preferencias">
             <AccountPanel onError={setError} />
           </Panel>
@@ -278,7 +326,7 @@ export function SettingsManager() {
         <button
           className="admin-primary-button"
           disabled={saveMutation.isPending}
-          onClick={() => saveMutation.mutate()}
+          onClick={() => saveMutation.mutate(undefined)}
           type="button"
         >
           {saveMutation.isPending ? "Guardando..." : "Guardar cambios"}
