@@ -633,10 +633,11 @@ async function getOrderRowById(orderId: string): Promise<OrderRow | undefined> {
   return result.rows[0] as unknown as OrderRow | undefined;
 }
 
-async function getCustomerPickupCooldownSeconds(): Promise<number> {
-  const result = await getDb().execute(
-    "select customer_pickup_cooldown_seconds from truck_config limit 1",
-  );
+async function getCustomerPickupCooldownSeconds(truckId: string): Promise<number> {
+  const result = await getDb().execute({
+    sql: "select customer_pickup_cooldown_seconds from truck_config where id = ?",
+    args: [truckId],
+  });
   const row = result.rows[0] as unknown as { customer_pickup_cooldown_seconds: number } | undefined;
   return Math.max(0, row?.customer_pickup_cooldown_seconds ?? 15);
 }
@@ -939,7 +940,7 @@ export async function cancelStaffOrder(orderId: string, reason: string) {
 export async function getStaffOrders() {
   const db = getDb();
   const truckId = await getCurrentTruckId();
-  const cooldownSeconds = await getCustomerPickupCooldownSeconds();
+  const cooldownSeconds = await getCustomerPickupCooldownSeconds(truckId);
   const pickupVisibleSince = `-${cooldownSeconds} seconds`;
 
   const [orderResult, modifiersByMenuItemId] = await Promise.all([
@@ -1089,9 +1090,13 @@ export async function createCustomerModificationRequest(input: {
     throw new ApiError(409, "CONFLICT", "El pedido todavia no tiene el pago aprobado");
   }
 
-  const configResult = await db.execute(
-    "select allow_order_modifications from truck_profile limit 1",
-  );
+  const configResult = await db.execute({
+    sql: `
+      select allow_order_modifications from truck_profile
+      where truck_config_id = ?
+    `,
+    args: [await getPublicTruckId()],
+  });
   const config = configResult.rows[0] as unknown as { allow_order_modifications: number } | undefined;
 
   if (config && !config.allow_order_modifications) {
