@@ -4,7 +4,10 @@ import { NextResponse } from "next/server";
 
 import { handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
-import { requireStaffPermission } from "@/lib/auth/staff-session";
+import {
+  requireStaffPermission,
+  requireSuperAdmin,
+} from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
 import { getDb } from "@/lib/db/client";
 import { roleCreateSchema } from "@/lib/validators/menu";
@@ -42,7 +45,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const context = await requireStaffPermission("roles.manage");
+    const context = await requireSuperAdmin();
     const body = await parseJsonBody(request, roleCreateSchema);
     const id = randomUUID();
 

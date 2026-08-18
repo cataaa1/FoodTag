@@ -19,6 +19,12 @@ export async function GET() {
         id: context.user.id,
         email: context.user.email,
         fullName: context.user.fullName,
+        isSuperAdmin: context.user.isSuperAdmin,
+      },
+      role: {
+        id: context.role.id,
+        name: context.role.name,
+        isSystem: context.role.isSystem,
       },
       permissions: context.role.permissionsJson,
     });

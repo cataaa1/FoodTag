@@ -1,18 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { AccountPanel, useAdminSession } from "@/components/admin/account-panel";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { useTransientMessage } from "@/hooks/use-transient-message";
-import {
-  readStoredAdminLanguage,
-  readStoredDarkMode,
-  writeStoredAdminLanguage,
-  writeStoredDarkMode,
-  type AdminLanguage,
-} from "@/lib/utils/admin-preferences";
 import { CUSTOM_SOUND_STORAGE_KEY, playBeeperSound } from "@/lib/utils/beeper";
 import { optimizeImageFile } from "@/lib/utils/client-image";
 import { getContrastColor, normalizeHexColor } from "@/lib/utils/color";
@@ -32,15 +25,6 @@ type TruckSettings = {
   beepSoundId: string;
   allowOrderModifications: boolean;
   customerPickupCooldownSeconds: number;
-};
-
-type AdminSession = {
-  staffUser: {
-    id: string;
-    email: string;
-    fullName: string;
-  };
-  permissions: string[];
 };
 
 type SettingsForm = {
@@ -107,7 +91,6 @@ function settingsToForm(settings: TruckSettings): SettingsForm {
 }
 
 export function SettingsManager() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
@@ -119,20 +102,18 @@ export function SettingsManager() {
     if (typeof localStorage === "undefined") return null;
     return localStorage.getItem(CUSTOM_SOUND_STORAGE_KEY) ? "Sonido importado" : null;
   });
-  const [darkModePreference, setDarkModePreference] = useState(readStoredDarkMode);
-  const [languagePreference, setLanguagePreference] =
-    useState<AdminLanguage>(readStoredAdminLanguage);
-
   useTransientMessage(feedback, () => setFeedback(null));
   useTransientMessage(error, () => setError(null), 4_200);
 
+  const sessionQuery = useAdminSession();
+  const canWriteSettings = Boolean(
+    sessionQuery.data?.permissions.includes("settings.write"),
+  );
   const settingsQuery = useQuery({
     queryKey: ["admin", "settings"],
     queryFn: () => fetchJson<{ settings: TruckSettings }>("/api/admin/settings"),
-  });
-  const sessionQuery = useQuery({
-    queryKey: ["admin", "session"],
-    queryFn: () => fetchJson<AdminSession>("/api/admin/session"),
+    // Sin settings.write el endpoint responde 403: ni lo pedimos.
+    enabled: canWriteSettings,
   });
 
   useEffect(() => {
@@ -140,17 +121,6 @@ export function SettingsManager() {
       setForm(settingsToForm(settingsQuery.data.settings));
     }
   }, [settingsQuery.data?.settings]);
-
-  const logoutMutation = useMutation({
-    mutationFn: async () =>
-      fetch("/api/staff/logout", { method: "POST" }),
-    onSuccess: () => {
-      router.push("/staff/login");
-    },
-    onError: () => {
-      setError("No pudimos cerrar la sesion");
-    },
-  });
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -188,16 +158,6 @@ export function SettingsManager() {
     value: SettingsForm[TField],
   ) {
     setForm((current) => ({ ...current, [field]: value }));
-  }
-
-  function updateDarkModePreference(value: boolean) {
-    setDarkModePreference(value);
-    writeStoredDarkMode(value);
-  }
-
-  function updateLanguagePreference(value: AdminLanguage) {
-    setLanguagePreference(value);
-    writeStoredAdminLanguage(value);
   }
 
   function importHeroImage(file: File | undefined) {
@@ -276,6 +236,33 @@ export function SettingsManager() {
           : "No pudimos preparar la imagen",
       );
     }
+  }
+
+  // Cajero y cocina tambien entran aca: es su unica salida para cerrar sesion
+  // o cambiar de cuenta. Ven solo el bloque de cuenta, sin los ajustes del truck.
+  if (sessionQuery.isSuccess && !canWriteSettings) {
+    return (
+      <AdminShell
+        subtitle="Tu cuenta y preferencias de este dispositivo"
+        title="Configuración"
+      >
+        {error ? (
+          <div className="mb-5 rounded-[10px] border border-[#ef4444]/25 bg-[#ef4444]/10 px-4 py-3 text-[13px] font-bold text-[#ef4444]">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="max-w-3xl">
+          <Panel eyebrow="Cuenta" title="Sesión y preferencias">
+            <AccountPanel onError={setError} />
+          </Panel>
+          <p className="mt-4 text-[13px] leading-5 text-[#999]">
+            Los ajustes del foodtruck (branding, horarios, pagos) los administra
+            una cuenta con permiso de configuración.
+          </p>
+        </div>
+      </AdminShell>
+    );
   }
 
   return (
@@ -635,76 +622,8 @@ export function SettingsManager() {
             </div>
           </Panel>
 
-          <Panel eyebrow="Cuenta" title="Sesion y preferencias">
-            <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-              <div className="rounded-[16px] border border-[#e8e8e8] bg-[#fafafa] p-4 dark:border-[#2e2e2e] dark:bg-[#242424]">
-                <p className="text-xs font-bold uppercase tracking-[0.8px] text-[#999]">
-                  Cuenta actual
-                </p>
-                <p className="mt-2 text-sm font-black text-[#111] dark:text-[#f5f5f5]">
-                  {sessionQuery.data?.staffUser.fullName ?? "Administrador"}
-                </p>
-                <p className="mt-1 text-xs text-[#777] dark:text-[#b4b4b4]">
-                  {sessionQuery.data?.staffUser.email ?? "sin email"}
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    className="admin-muted-button"
-                    disabled={logoutMutation.isPending}
-                    onClick={() => logoutMutation.mutate()}
-                    type="button"
-                  >
-                    {logoutMutation.isPending ? "Saliendo..." : "Cerrar sesion"}
-                  </button>
-                  <button
-                    className="admin-primary-button"
-                    disabled={logoutMutation.isPending}
-                    onClick={() => logoutMutation.mutate()}
-                    type="button"
-                  >
-                    Cambiar cuenta
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-4 rounded-[16px] border border-[#e8e8e8] bg-[#fafafa] p-4 dark:border-[#2e2e2e] dark:bg-[#242424]">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.8px] text-[#999]">
-                    Idioma del admin
-                  </p>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <PreferenceButton
-                      active={languagePreference === "es"}
-                      label="Español"
-                      onClick={() => updateLanguagePreference("es")}
-                    />
-                    <PreferenceButton
-                      active={languagePreference === "en"}
-                      label="English"
-                      onClick={() => updateLanguagePreference("en")}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.8px] text-[#999]">
-                    Modo del admin
-                  </p>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <PreferenceButton
-                      active={!darkModePreference}
-                      label={languagePreference === "en" ? "Light" : "Claro"}
-                      onClick={() => updateDarkModePreference(false)}
-                    />
-                    <PreferenceButton
-                      active={darkModePreference}
-                      label={languagePreference === "en" ? "Dark" : "Oscuro"}
-                      onClick={() => updateDarkModePreference(true)}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
+          <Panel eyebrow="Cuenta" title="Sesión y preferencias">
+            <AccountPanel onError={setError} />
           </Panel>
         </div>
 
@@ -747,35 +666,6 @@ function Field({ children, label }: { children: React.ReactNode; label: string }
       </span>
       {children}
     </label>
-  );
-}
-
-function PreferenceButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className="rounded-[12px] border px-3 py-2 text-sm font-bold transition"
-      onClick={onClick}
-      style={
-        active
-          ? {
-              backgroundColor: "var(--admin-accent-soft)",
-              borderColor: "var(--admin-accent)",
-              color: "var(--admin-accent)",
-            }
-          : undefined
-      }
-      type="button"
-    >
-      {label}
-    </button>
   );
 }
 

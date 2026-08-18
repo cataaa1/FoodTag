@@ -5,7 +5,10 @@ import { NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
 import { hashPassword } from "@/lib/auth/password";
-import { requireStaffPermission } from "@/lib/auth/staff-session";
+import {
+  requireStaffPermission,
+  requireSuperAdmin,
+} from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
 import { getDb } from "@/lib/db/client";
 import { staffUserCreateSchema } from "@/lib/validators/menu";
@@ -59,7 +62,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const context = await requireStaffPermission("users.write");
+    const context = await requireSuperAdmin();
     const body = await parseJsonBody(request, staffUserCreateSchema);
     const db = getDb();
     const id = randomUUID();

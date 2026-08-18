@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 
 import { handleRouteError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/route";
-import { requireStaffPermission } from "@/lib/auth/staff-session";
+import {
+  requireStaffPermission,
+  requireStaffSession,
+} from "@/lib/auth/staff-session";
 import { writeAuditLog } from "@/lib/data/audit-log";
 import { getOpeningHours } from "@/lib/data/truck-status";
 import { getDb } from "@/lib/db/client";
@@ -11,7 +14,9 @@ import { hoursPatchSchema } from "@/lib/validators/hours";
 
 export async function GET() {
   try {
-    const context = await requireStaffPermission("hours.write");
+    // Lectura abierta a todo el staff: los horarios son informacion publica y
+    // cajero/cocina los necesitan para ubicarse. Editar sigue pidiendo hours.write.
+    const context = await requireStaffSession();
     const hours = await getOpeningHours();
     return NextResponse.json({ hours, permissions: context.role.permissionsJson });
   } catch (error) {

@@ -13,6 +13,7 @@ import {
   writeStoredDarkMode,
   type AdminLanguage,
 } from "@/lib/utils/admin-preferences";
+import { useTruckBranding } from "@/hooks/use-truck-branding";
 import { getContrastColor, hexToRgba, normalizeHexColor } from "@/lib/utils/color";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/lib/utils/http";
@@ -25,7 +26,6 @@ type TruckShellStatus = {
   todayHoursLabel: string;
   truckName: string;
   brandIcon: string;
-  logoUrl: string | null;
   primaryColor: string;
 };
 
@@ -34,6 +34,12 @@ type AdminSession = {
     id: string;
     email: string;
     fullName: string;
+    isSuperAdmin: boolean;
+  };
+  role: {
+    id: string;
+    name: string;
+    isSystem: boolean;
   };
   permissions: PermissionKey[];
 };
@@ -46,14 +52,16 @@ type NavItem = {
     en: string;
   };
   permissions?: PermissionKey[];
+  superAdminOnly?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
   {
+    // Visible para todo el staff: es la puerta de entrada al panel. El contenido
+    // sensible del dashboard se recorta adentro segun los permisos.
     href: "/admin",
     icon: "📊",
     label: { es: "Dashboard", en: "Dashboard" },
-    permissions: ["dashboard.view"],
   },
   {
     href: "/admin/menu",
@@ -62,16 +70,17 @@ const NAV_ITEMS: NavItem[] = [
     permissions: ["menu.read"],
   },
   {
+    // Todos pueden consultarlos; editar sigue pidiendo hours.write.
     href: "/admin/hours",
     icon: "🕐",
     label: { es: "Horarios", en: "Hours" },
-    permissions: ["hours.write"],
   },
   {
     href: "/admin/users",
     icon: "👥",
     label: { es: "Usuarios y roles", en: "Users and roles" },
     permissions: ["users.manage", "roles.manage"],
+    superAdminOnly: true,
   },
   {
     href: "/admin/orders",
@@ -86,19 +95,25 @@ const NAV_ITEMS: NavItem[] = [
     permissions: ["users.manage"],
   },
   {
+    // Siempre accesible: es la unica via para ver la cuenta y cerrar sesion.
     href: "/admin/settings",
     icon: "⚙️",
     label: { es: "Configuracion", en: "Settings" },
-    permissions: ["settings.write"],
   },
 ];
 
-function canAccessItem(item: NavItem, permissions: PermissionKey[] | null) {
-  if (!item.permissions?.length || !permissions) {
+function canAccessItem(item: NavItem, session: AdminSession | null) {
+  if (item.superAdminOnly && session && !session.staffUser.isSuperAdmin) {
+    return false;
+  }
+
+  if (!item.permissions?.length || !session) {
     return true;
   }
 
-  return item.permissions.every((permission) => permissions.includes(permission));
+  return item.permissions.every((permission) =>
+    session.permissions.includes(permission),
+  );
 }
 
 export function AdminShell({
@@ -123,12 +138,13 @@ export function AdminShell({
     queryKey: ["admin", "session"],
     queryFn: () => fetchJson<AdminSession>("/api/admin/session"),
   });
+  const brandingQuery = useTruckBranding();
 
   const identity = identityQuery.data;
   const permissions = sessionQuery.data?.permissions ?? null;
   const visibleNavItems = useMemo(
-    () => NAV_ITEMS.filter((item) => canAccessItem(item, permissions)),
-    [permissions],
+    () => NAV_ITEMS.filter((item) => canAccessItem(item, sessionQuery.data ?? null)),
+    [sessionQuery.data],
   );
 
   const text =
@@ -220,7 +236,7 @@ export function AdminShell({
         <div className="mb-3 flex items-center gap-2.5 border-b border-[#e8e8e8] px-5 pb-5 dark:border-white/10">
           <BrandMark
             brandIcon={identity?.brandIcon ?? "🚚"}
-            logoUrl={identity?.logoUrl ?? null}
+            logoUrl={brandingQuery.data?.logoUrl ?? null}
             primaryColor={accentColor}
           />
           <div>

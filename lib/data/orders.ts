@@ -262,6 +262,41 @@ async function getModificationRequestsForOrder(orderId: string) {
   return (result.rows as unknown as OrderModificationRequestRow[]).map(mapModificationRequest);
 }
 
+/**
+ * Version en lote de la anterior. El kanban lista N pedidos a la vez: pedirlas
+ * de a una era un N+1 que se repetia en cada poll.
+ */
+async function getModificationRequestsByOrderId(orderIds: string[]) {
+  const byOrderId = new Map<string, OrderModificationRequest[]>();
+
+  if (!orderIds.length) {
+    return byOrderId;
+  }
+
+  const result = await getDb().execute({
+    sql: `
+      select *
+      from order_modification_request
+      where order_id in (${orderIds.map(() => "?").join(", ")})
+      order by created_at asc
+    `,
+    args: orderIds,
+  });
+
+  for (const row of result.rows as unknown as OrderModificationRequestRow[]) {
+    const request = mapModificationRequest(row);
+    const current = byOrderId.get(request.orderId);
+
+    if (current) {
+      current.push(request);
+    } else {
+      byOrderId.set(request.orderId, [request]);
+    }
+  }
+
+  return byOrderId;
+}
+
 function mapOrder(
   row: OrderRow,
   items: OrderItem[],
@@ -567,19 +602,6 @@ export async function getCustomerOrderById(
     (itemResult.rows as unknown as OrderItemRow[]).map(mapOrderItem),
     modRequests,
   );
-}
-
-export async function getActiveOrderForCustomer(customerId: string): Promise<{ id: string } | null> {
-  const result = await getDb().execute({
-    sql: `select id from customer_order
-          where customer_id = ?
-            and status not in ('cancelled', 'delivered')
-            and picked_up_at is null
-          order by created_at desc
-          limit 1`,
-    args: [customerId],
-  });
-  return (result.rows[0] as unknown as { id: string } | undefined) ?? null;
 }
 
 async function getOrderRowById(orderId: string): Promise<OrderRow | undefined> {
@@ -898,7 +920,7 @@ export async function getStaffOrders() {
   const cooldownSeconds = await getCustomerPickupCooldownSeconds();
   const pickupVisibleSince = `-${cooldownSeconds} seconds`;
 
-  const [orderResult, itemResult, modifiersByMenuItemId] = await Promise.all([
+  const [orderResult, modifiersByMenuItemId] = await Promise.all([
     db.execute({
       sql: `
         select
@@ -926,24 +948,37 @@ export async function getStaffOrders() {
       `,
       args: [pickupVisibleSince],
     }),
-    db.execute("select * from order_item order by rowid asc"),
     getModifiersByMenuItemId(),
   ]);
 
   const orderRows = orderResult.rows as unknown as StaffOrderRow[];
-  const itemRows = itemResult.rows as unknown as OrderItemRow[];
+  const orderIds = orderRows.map((row) => row.id);
 
-  const modRequestResults = await Promise.all(
-    orderRows.map((row) => getModificationRequestsForOrder(row.id)),
-  );
+  // Solo los items de los pedidos visibles. Antes esto era un `select *` sin
+  // where: leia la tabla entera de items historicos en cada poll del kanban.
+  const [itemResult, modRequestsByOrderId] = await Promise.all([
+    orderIds.length
+      ? db.execute({
+          sql: `
+            select * from order_item
+            where order_id in (${orderIds.map(() => "?").join(", ")})
+            order by rowid asc
+          `,
+          args: orderIds,
+        })
+      : null,
+    getModificationRequestsByOrderId(orderIds),
+  ]);
 
-  return orderRows.map((row, i) => ({
+  const itemRows = (itemResult?.rows ?? []) as unknown as OrderItemRow[];
+
+  return orderRows.map((row) => ({
     ...mapOrder(
       row,
       itemRows
         .filter((item) => item.order_id === row.id)
         .map((item) => mapStaffOrderItem(item, modifiersByMenuItemId)),
-      modRequestResults[i] ?? [],
+      modRequestsByOrderId.get(row.id) ?? [],
     ),
     customerName: row.customer_name,
     customerPhone: row.customer_phone,

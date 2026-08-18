@@ -1,5 +1,10 @@
 import { getDb } from "@/lib/db/client";
-import type { OpeningHours, TruckConfig, TruckStatus } from "@/lib/types/domain";
+import type {
+  OpeningHours,
+  TruckBranding,
+  TruckConfig,
+  TruckStatus,
+} from "@/lib/types/domain";
 import { formatTimeWindow, formatWeekday } from "@/lib/utils/format";
 
 type TruckConfigRow = {
@@ -116,11 +121,9 @@ export function buildTruckStatus(
     reason: config.pausedReason,
     truckName: config.name,
     address: config.address,
-    heroImageUrl: config.heroImageUrl,
     publicTagline: config.publicTagline,
     instagramHandle: config.instagramHandle,
     brandIcon: config.brandIcon,
-    logoUrl: config.logoUrl,
     primaryColor: config.primaryColor,
     allowOrderModifications: config.allowOrderModifications,
     beepSoundId: config.beepSoundId,
@@ -192,4 +195,16 @@ export async function getOpeningHours(): Promise<OpeningHours[]> {
 export async function getTruckStatus(): Promise<TruckStatus> {
   const [config, hours] = await Promise.all([getTruckConfig(), getOpeningHours()]);
   return buildTruckStatus(config, hours);
+}
+
+export async function getTruckBranding(): Promise<TruckBranding> {
+  const config = await getTruckConfig();
+
+  return {
+    truckName: config.name,
+    brandIcon: config.brandIcon,
+    primaryColor: config.primaryColor,
+    logoUrl: config.logoUrl,
+    heroImageUrl: config.heroImageUrl,
+  };
 }

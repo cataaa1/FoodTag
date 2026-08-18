@@ -159,6 +159,8 @@ export function HoursManager() {
   const isPaused = truckStatusQuery.data?.paused ?? false;
   const permissions = hoursQuery.data?.permissions ?? [];
   const canPauseTruck = permissions.includes("settings.write");
+  // Cajero y cocina consultan la grilla; solo hours.write puede tocarla.
+  const canEditHours = permissions.includes("hours.write");
 
   return (
     <AdminShell
@@ -189,9 +191,19 @@ export function HoursManager() {
           </span>
         )
       }
-      subtitle="Configurá cuándo está abierto el truck"
+      subtitle={
+        canEditHours
+          ? "Configurá cuándo está abierto el truck"
+          : "Horarios y pausa del truck (solo lectura)"
+      }
       title="Gestión de horarios"
     >
+      {!canEditHours ? (
+        <div className="mb-5 rounded-[10px] border border-[#e8e8e8] bg-[#f8f8f8] px-4 py-3 text-[13px] font-semibold text-[#777] dark:border-[#2e2e2e] dark:bg-[#222] dark:text-[#aaa]">
+          Estás viendo los horarios en modo lectura. Para editarlos necesitás el
+          permiso <span className="font-black">Editar horarios</span>.
+        </div>
+      ) : null}
       {message ? (
         <div className="brand-accent-notice mb-5 rounded-[10px] border px-4 py-3 text-[13px] font-bold">
           {message}
@@ -236,13 +248,14 @@ export function HoursManager() {
                   <td className="border-b border-[#e8e8e8] px-4 py-[13px] dark:border-[#2e2e2e]">
                     <Toggle
                       checked={active}
+                      disabled={!canEditHours}
                       onChange={() => updateHourRow(entry.weekday, { closed: active })}
                     />
                   </td>
                   <td className="border-b border-[#e8e8e8] px-4 py-[13px] dark:border-[#2e2e2e]">
                     <input
                       className="admin-input max-w-[135px] disabled:bg-[#f2f2f2] disabled:text-[#999] dark:disabled:bg-[#242424]"
-                      disabled={!active}
+                      disabled={!active || !canEditHours}
                       onChange={(event) =>
                         updateHourRow(entry.weekday, {
                           opensAt: event.target.value ? `${event.target.value}:00` : null,
@@ -255,7 +268,7 @@ export function HoursManager() {
                   <td className="border-b border-[#e8e8e8] px-4 py-[13px] dark:border-[#2e2e2e]">
                     <input
                       className="admin-input max-w-[135px] disabled:bg-[#f2f2f2] disabled:text-[#999] dark:disabled:bg-[#242424]"
-                      disabled={!active}
+                      disabled={!active || !canEditHours}
                       onChange={(event) =>
                         updateHourRow(entry.weekday, {
                           closesAt: event.target.value ? `${event.target.value}:00` : null,
@@ -284,14 +297,16 @@ export function HoursManager() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          className="admin-primary-button px-6 py-3 text-sm"
-          disabled={saveHoursMutation.isPending}
-          onClick={() => saveHoursMutation.mutate()}
-          type="button"
-        >
-          {saveHoursMutation.isPending ? "Guardando..." : "Guardar cambios"}
-        </button>
+        {canEditHours ? (
+          <button
+            className="admin-primary-button px-6 py-3 text-sm"
+            disabled={saveHoursMutation.isPending}
+            onClick={() => saveHoursMutation.mutate()}
+            type="button"
+          >
+            {saveHoursMutation.isPending ? "Guardando..." : "Guardar cambios"}
+          </button>
+        ) : null}
         <span className="text-xs font-semibold text-[#999]">
           Estado actual: {truckStatusQuery.data?.isOpen ? "abierto" : "cerrado"} ·{" "}
           {truckStatusQuery.data?.todayHoursLabel ?? "sin información"}
@@ -371,15 +386,18 @@ function PauseModal({
 
 function Toggle({
   checked,
+  disabled = false,
   onChange,
 }: {
   checked: boolean;
+  disabled?: boolean;
   onChange: () => void;
 }) {
   return (
     <button
-      className="admin-toggle"
+      className="admin-toggle disabled:cursor-not-allowed disabled:opacity-50"
       data-checked={checked}
+      disabled={disabled}
       onClick={onChange}
       type="button"
     >

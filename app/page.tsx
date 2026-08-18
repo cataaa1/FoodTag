@@ -1,17 +1,8 @@
 import { redirect } from "next/navigation";
 
-import { getCustomerSession } from "@/lib/auth/customer-jwt";
-import { getActiveOrderForCustomer } from "@/lib/data/orders";
-
-export default async function Home() {
-  const session = await getCustomerSession();
-
-  if (session) {
-    const activeOrder = await getActiveOrderForCustomer(session.customerId);
-    if (activeOrder) {
-      redirect(`/ticket/${activeOrder.id}`);
-    }
-  }
-
+export default function Home() {
+  // La raiz siempre entra al menu. No redirigimos al ticket activo: un pedido
+  // con el pago abandonado queda "activo" para siempre y dejaba al cliente
+  // encerrado en un ticket viejo esperando un pago que nunca llega.
   redirect("/menu");
 }

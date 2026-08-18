@@ -131,13 +131,14 @@ async function seedAdmin(adminRoleId: string) {
   await db.execute({
     sql: `
       insert into staff_user (
-        id, email, full_name, password_hash, role_id, active
+        id, email, full_name, password_hash, role_id, active, is_super_admin
       )
-      values (@id, @email, @fullName, @passwordHash, @roleId, 1)
+      values (@id, @email, @fullName, @passwordHash, @roleId, 1, 1)
       on conflict(email) do update set
         full_name = excluded.full_name,
         role_id = excluded.role_id,
-        active = 1
+        active = 1,
+        is_super_admin = 1
     `,
     args: {
       id: existing?.id ?? randomUUID(),

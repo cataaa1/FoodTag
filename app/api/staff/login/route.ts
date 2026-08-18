@@ -8,6 +8,8 @@ import {
 } from "@/lib/auth/staff-session";
 import {
   createStaffSessionToken,
+  STAFF_FRESH_LOGIN_COOKIE,
+  STAFF_FRESH_LOGIN_MAX_AGE_SECONDS,
   STAFF_SESSION_COOKIE,
 } from "@/lib/auth/staff-token";
 
@@ -41,6 +43,14 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 60 * 60 * 12,
+    });
+
+    response.cookies.set(STAFF_FRESH_LOGIN_COOKIE, "1", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: STAFF_FRESH_LOGIN_MAX_AGE_SECONDS,
     });
 
     return response;

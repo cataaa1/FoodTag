@@ -23,6 +23,7 @@ import type {
   OrderStatus,
   PermissionKey,
 } from "@/lib/types/domain";
+import { useTruckBranding } from "@/hooks/use-truck-branding";
 import { getContrastColor, normalizeHexColor } from "@/lib/utils/color";
 import { formatCurrency } from "@/lib/utils/format";
 import { fetchJson } from "@/lib/utils/http";
@@ -72,7 +73,6 @@ type OrdersResponse = {
 type TruckIdentity = {
   truckName: string;
   brandIcon: string;
-  logoUrl: string | null;
   primaryColor: string;
   customerPickupCooldownSeconds: number;
 };
@@ -281,12 +281,16 @@ export function StaffKanban() {
   const ordersQuery = useQuery({
     queryKey: ["staff", "orders"],
     queryFn: () => fetchJson<OrdersResponse>("/api/staff/orders"),
-    refetchInterval: 5_000,
+    // 10 s alcanza de sobra para una cocina y parte al medio las invocaciones
+    // del plan gratuito. Las acciones del staff refrescan al instante igual,
+    // porque cada mutacion escribe el resultado en la cache.
+    refetchInterval: 10_000,
   });
   const identityQuery = useQuery({
     queryKey: ["truck-status"],
     queryFn: () => fetchJson<TruckIdentity>("/api/customer/truck-status"),
   });
+  const brandingQuery = useTruckBranding();
 
   const orders = ordersQuery.data?.orders ?? EMPTY_ORDERS;
   const identity = identityQuery.data;
@@ -608,7 +612,7 @@ export function StaffKanban() {
           <div className="flex items-center gap-3">
             <BrandMark
               brandIcon={identity?.brandIcon ?? "FT"}
-              logoUrl={identity?.logoUrl ?? null}
+              logoUrl={brandingQuery.data?.logoUrl ?? null}
               primaryColor={identity?.primaryColor ?? "#f97316"}
             />
             <div>

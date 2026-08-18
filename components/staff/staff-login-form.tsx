@@ -1,29 +1,66 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { useTruckBranding } from "@/hooks/use-truck-branding";
 import { getContrastColor, normalizeHexColor } from "@/lib/utils/color";
-import { fetchJson } from "@/lib/utils/http";
 
-type TruckIdentity = {
-  truckName: string;
-  brandIcon: string;
-  logoUrl: string | null;
-  primaryColor: string;
+const REMEMBERED_ACCOUNT_KEY = "foodtag-staff-remembered-account";
+
+type RememberedAccount = {
+  email: string;
+  password: string;
 };
 
+function readRememberedAccount(): RememberedAccount | null {
+  if (typeof localStorage === "undefined") return null;
+
+  try {
+    const raw = localStorage.getItem(REMEMBERED_ACCOUNT_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<RememberedAccount> | null;
+    if (!parsed?.email) return null;
+
+    return { email: parsed.email, password: parsed.password ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+function writeRememberedAccount(account: RememberedAccount | null) {
+  if (typeof localStorage === "undefined") return;
+
+  try {
+    if (account) {
+      localStorage.setItem(REMEMBERED_ACCOUNT_KEY, JSON.stringify(account));
+    } else {
+      localStorage.removeItem(REMEMBERED_ACCOUNT_KEY);
+    }
+  } catch {
+    // El navegador puede tener el storage bloqueado; no es critico.
+  }
+}
+
 export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
-  const [email, setEmail] = useState("admin@foodtag.ar");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const identityQuery = useQuery({
-    queryKey: ["truck-status"],
-    queryFn: () => fetchJson<TruckIdentity>("/api/customer/truck-status"),
-  });
+
+  // Se lee despues del montaje para no romper la hidratacion con el HTML del server.
+  useEffect(() => {
+    const saved = readRememberedAccount();
+    if (!saved) return;
+
+    setEmail(saved.email);
+    setPassword(saved.password);
+    setRemember(true);
+  }, []);
+  const identityQuery = useTruckBranding();
   const identity = identityQuery.data;
   const accentColor = normalizeHexColor(identity?.primaryColor);
 
@@ -45,6 +82,8 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
           | null;
         throw new Error(payload?.error?.message ?? "No se pudo iniciar sesión");
       }
+
+      writeRememberedAccount(remember ? { email, password } : null);
 
       router.push(nextPath ?? "/staff/kanban");
       router.refresh();
@@ -102,6 +141,29 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
             />
           </label>
 
+          <label className="mt-0.5 flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-[#2e2e2e] bg-[#1c1c1c] px-3.5 py-3">
+            <input
+              checked={remember}
+              className="mt-0.5 size-4 shrink-0 cursor-pointer accent-current"
+              onChange={(event) => {
+                const next = event.target.checked;
+                setRemember(next);
+                if (!next) writeRememberedAccount(null);
+              }}
+              style={{ color: accentColor }}
+              type="checkbox"
+            />
+            <span>
+              <span className="block text-[13px] font-bold text-[#f5f5f5]">
+                Recordar esta cuenta
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-[#606060]">
+                Guarda email y contraseña en este navegador para no reescribirlos.
+                Usalo solo en dispositivos propios.
+              </span>
+            </span>
+          </label>
+
           {error ? (
             <p className="rounded-xl border border-[#ef4444]/25 bg-[#ef4444]/15 px-4 py-3 text-sm font-semibold text-[#ef4444]">
               {error}
@@ -117,8 +179,9 @@ export function StaffLoginForm({ nextPath }: { nextPath?: string }) {
             {loading ? "Entrando..." : "Entrar"}
           </button>
 
-          <p className="pt-2 text-center text-xs text-[#606060]">
-            Credencial local de desarrollo: admin@foodtag.ar
+          <p className="pt-2 text-center text-[11px] leading-4 text-[#606060]">
+            Las cuentas las da de alta el super admin desde{" "}
+            <span className="font-semibold text-[#8a8a8a]">Admin › Usuarios</span>.
           </p>
         </form>
       </div>

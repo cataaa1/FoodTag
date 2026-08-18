@@ -4,6 +4,14 @@ import { getServerEnv } from "@/lib/config/env";
 
 export const STAFF_SESSION_COOKIE = "foodtag_staff_session";
 
+/**
+ * Cookie de un solo uso que emite el login. Le avisa al middleware que la
+ * sesion se acaba de crear, para que la primera carga del panel no vuelva a
+ * pedir credenciales y quede en bucle.
+ */
+export const STAFF_FRESH_LOGIN_COOKIE = "foodtag_staff_fresh";
+export const STAFF_FRESH_LOGIN_MAX_AGE_SECONDS = 60;
+
 export type StaffSessionJwt = {
   staffUserId: string;
 };

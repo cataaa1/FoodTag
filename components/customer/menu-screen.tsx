@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getCartTotals, useCartStore } from "@/components/customer/cart-store";
 import { PhoneShell, PrimaryPhoneButton } from "@/components/customer/phone-shell";
+import { useTruckBranding } from "@/hooks/use-truck-branding";
 import { getContrastColor, hexToRgba, normalizeHexColor } from "@/lib/utils/color";
 import { formatCurrency } from "@/lib/utils/format";
 import { fetchJson } from "@/lib/utils/http";
@@ -19,8 +20,6 @@ type TruckStatus = {
   reason: string | null;
   truckName: string;
   address: string;
-  heroImageUrl: string | null;
-  logoUrl: string | null;
   brandIcon: string;
   publicTagline: string;
   instagramHandle: string | null;
@@ -126,6 +125,7 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
   const cartItems = useCartStore((state) => state.items);
   const cartTotals = getCartTotals(cartItems);
 
+  const brandingQuery = useTruckBranding();
   const statusQuery = useQuery({
     queryKey: ["truck-status"],
     queryFn: () => fetchJson<TruckStatus>("/api/customer/truck-status"),
@@ -206,6 +206,7 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
   const categories = menuQuery.data?.categories ?? EMPTY_CATEGORIES;
   const customer = sessionCustomer ?? sessionQuery.data?.customer ?? null;
   const truck = statusQuery.data;
+  const branding = brandingQuery.data;
   const accentColor = normalizeHexColor(truck?.primaryColor);
   const accentTextColor = getContrastColor(accentColor);
   const showLanding = !customer || !hasEnteredMenu;
@@ -348,13 +349,14 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
   if (showLanding) {
     return (
       <PhoneShell>
-        <div className="relative h-[200px] shrink-0 overflow-hidden bg-[#1c1009]">
-          {truck?.heroImageUrl ? (
+        {/* Hero — no overflow-hidden so there is no 1-px clip artifact at the boundary */}
+        <div className="relative h-[220px] shrink-0 bg-[#1c1009]">
+          {branding?.heroImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              alt={truck.truckName}
+              alt={truck?.truckName ?? branding.truckName}
               className="absolute inset-0 size-full object-cover"
-              src={truck.heroImageUrl}
+              src={branding.heroImageUrl}
             />
           ) : (
             <div
@@ -366,33 +368,35 @@ export function MenuScreen({ handoffError }: { handoffError?: string }) {
               <TruckBrandFallback
                 brandIcon={truck?.brandIcon ?? "🚚"}
                 label={truck?.truckName ?? "Foodtruck"}
-                logoUrl={truck?.logoUrl ?? null}
+                logoUrl={branding?.logoUrl ?? null}
                 primaryColor={accentColor}
               />
-              <span className="text-[11px] font-bold uppercase tracking-[2px] text-white/60">
-                {truck?.logoUrl ? "Logo del truck" : "Icono del truck"}
-              </span>
             </div>
           )}
-          <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(to_top,#fff8f1,transparent)]" />
-          <div className="absolute inset-x-0 bottom-3 text-center">
-            <h1 className="text-[22px] font-black tracking-[-0.5px] text-[#1c1009] drop-shadow-[0_1px_0_rgba(255,255,255,0.5)]">
+          {/* Dark scrim — keeps text readable on any photo */}
+          <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/60 via-black/30 to-transparent" />
+          {/* Warm fade — sits on top of the scrim at the very bottom, blends into the page */}
+          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#fff8f1] to-transparent" />
+          {/* Text — positioned above the warm zone so it stays in the dark scrim */}
+          <div className="absolute inset-x-0 bottom-[86px] text-center">
+            <h1 className="text-[22px] font-black tracking-[-0.3px] text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
               {truck?.truckName ?? "FoodTag"}
             </h1>
-            <p className="text-xs font-medium text-[#9a7560]">
+            <p className="mt-0.5 text-[12px] font-medium text-white/80 drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
               {truck?.publicTagline ?? "Food Truck · Av. Corrientes 1500"}
             </p>
             {truck?.instagramHandle ? (
-              <h3 className="mt-1 text-[13px] font-black uppercase tracking-[1px] text-[#7c4a23]">
+              <p className="mt-0.5 text-[12px] font-medium text-white/65 drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
                 {truck.instagramHandle.startsWith("@")
                   ? truck.instagramHandle
                   : `@${truck.instagramHandle}`}
-              </h3>
+              </p>
             ) : null}
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-[100px] pt-6 [scrollbar-width:none]">
+        {/* bg-[#fff8f1] matches the gradient end-color exactly — seamless, no line */}
+        <div className="flex-1 overflow-y-auto bg-[#fff8f1] px-6 pb-[100px] pt-6 [scrollbar-width:none]">
           {handoffError ? (
             <div className="mb-4 rounded-2xl border border-[#f0ddd0] bg-[#fff7ef] px-4 py-3 text-[13px] leading-5 text-[#6b4e35]">
               <strong className="block font-black text-[#1c1009]">No pudimos recuperar tu pedido automáticamente.</strong>

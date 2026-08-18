@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import Link from "next/link";
 
+import { useAdminSession } from "@/components/admin/account-panel";
 import { AdminShell } from "@/components/admin/admin-shell";
 import type {
   DashboardAverageTicketBucket,
@@ -15,6 +16,15 @@ import type {
 import { getContrastColor, hexToRgba, normalizeHexColor } from "@/lib/utils/color";
 import { formatCurrency } from "@/lib/utils/format";
 import { fetchJson } from "@/lib/utils/http";
+
+type PublicTruckStatus = {
+  isOpen: boolean;
+  paused: boolean;
+  reason: string | null;
+  todayHoursLabel: string;
+  nextOpeningLabel: string | null;
+  primaryColor: string;
+};
 
 function formatDuration(valueSeconds: number | null) {
   if (valueSeconds === null) {
@@ -158,16 +168,42 @@ function PreparationChart({
 }
 
 export function DashboardOverview() {
+  const sessionQuery = useAdminSession();
+  const permissions = sessionQuery.data?.permissions ?? [];
+  const canViewDashboard = permissions.includes("dashboard.view");
+  const canWriteMenu = permissions.includes("menu.write");
+
   const dashboardQuery = useQuery({
     queryKey: ["admin", "dashboard", "today"],
     queryFn: () => fetchJson<{ dashboard: DashboardToday }>("/api/admin/dashboard/today"),
+    // Metricas de venta solo para quien tiene dashboard.view; el resto del staff
+    // entra igual al panel pero sin pedir este endpoint (responderia 403).
+    enabled: canViewDashboard,
+  });
+  // Fuente publica del estado del truck: la usa cocina, que no ve el dashboard.
+  const publicStatusQuery = useQuery({
+    queryKey: ["truck-status"],
+    queryFn: () => fetchJson<PublicTruckStatus>("/api/customer/truck-status"),
   });
 
   const dashboard = dashboardQuery.data?.dashboard;
-  const truckStatus = dashboard?.truckStatus;
+  const truckStatus = dashboard?.truckStatus ?? publicStatusQuery.data;
   const accentColor = normalizeHexColor(truckStatus?.primaryColor);
   const accentTextColor = getContrastColor(accentColor);
-  const metrics = [
+
+  const truckStatusMetric = {
+    label: "Estado del truck",
+    value: truckStatus?.paused ? "En pausa" : truckStatus?.isOpen ? "Abierto" : "Cerrado",
+    sub: truckStatus?.paused
+      ? truckStatus.reason ?? "Pausa manual activa"
+      : truckStatus?.isOpen
+        ? truckStatus.todayHoursLabel
+        : truckStatus?.nextOpeningLabel ?? "Sin proximo horario",
+    color: truckStatus?.paused ? "#ef4444" : truckStatus?.isOpen ? "#22c55e" : "#eab308",
+    icon: truckStatus?.paused ? "⏸" : truckStatus?.isOpen ? "⏱" : "🌙",
+  };
+
+  const salesMetrics = [
     {
       label: "Vendido hoy",
       value: dashboard ? formatCurrency(dashboard.soldTodayCents) : "-",
@@ -209,25 +245,21 @@ export function DashboardOverview() {
       color: "#eab308",
       icon: "🏆",
     },
-    {
-      label: "Estado del truck",
-      value: truckStatus?.paused ? "En pausa" : truckStatus?.isOpen ? "Abierto" : "Cerrado",
-      sub: truckStatus?.paused
-        ? truckStatus.reason ?? "Pausa manual activa"
-        : truckStatus?.isOpen
-          ? truckStatus.todayHoursLabel
-          : truckStatus?.nextOpeningLabel ?? "Sin proximo horario",
-      color: truckStatus?.paused ? "#ef4444" : truckStatus?.isOpen ? "#22c55e" : "#eab308",
-      icon: truckStatus?.paused ? "⏸" : truckStatus?.isOpen ? "⏱" : "🌙",
-    },
   ];
+
+  const metrics = canViewDashboard
+    ? [...salesMetrics, truckStatusMetric]
+    : [truckStatusMetric];
 
   return (
     <AdminShell
       action={
         <button
           className="inline-flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-[13px] font-bold shadow-[0_2px_8px_rgba(0,0,0,0.14)] transition"
-          onClick={() => void dashboardQuery.refetch()}
+          onClick={() => {
+            void publicStatusQuery.refetch();
+            if (canViewDashboard) void dashboardQuery.refetch();
+          }}
           style={{
             backgroundColor: accentColor,
             boxShadow: `0 2px 8px ${hexToRgba(accentColor, 0.28)}`,
@@ -236,7 +268,11 @@ export function DashboardOverview() {
           type="button"
         >
           <RefreshCw
-            className={dashboardQuery.isFetching ? "size-3.5 animate-spin" : "size-3.5"}
+            className={
+              dashboardQuery.isFetching || publicStatusQuery.isFetching
+                ? "size-3.5 animate-spin"
+                : "size-3.5"
+            }
           />
           Actualizar
         </button>
@@ -244,11 +280,19 @@ export function DashboardOverview() {
       subtitle={
         dashboard
           ? `Resumen operativo actualizado para ${dashboard.serviceDateLabel}`
-          : "Resumen operativo del dia"
+          : canViewDashboard
+            ? "Resumen operativo del dia"
+            : "Estado del truck y accesos de tu rol"
       }
       title="Dashboard del dia"
     >
-      <div className="grid gap-3.5 pb-6 md:grid-cols-2 xl:grid-cols-5">
+      <div
+        className={
+          canViewDashboard
+            ? "grid gap-3.5 pb-6 md:grid-cols-2 xl:grid-cols-5"
+            : "grid gap-3.5 pb-6 md:max-w-sm"
+        }
+      >
         {metrics.map((metric) => (
           <div
             className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]"
@@ -276,88 +320,99 @@ export function DashboardOverview() {
         <div className="grid gap-2 md:grid-cols-3">
           <QuickAction color="#3b82f6" href="/staff/kanban" icon="📋" label="Ir al Kanban" />
           <QuickAction color="#ef4444" href="/admin/hours" icon="⏸" label="Horarios y pausa" />
-          <QuickAction color={accentColor} href="/admin/menu" icon="🍔" label="Gestionar menu" />
+          {canWriteMenu ? (
+            <QuickAction color={accentColor} href="/admin/menu" icon="🍔" label="Gestionar menu" />
+          ) : (
+            <QuickAction
+              color={accentColor}
+              href="/admin/settings"
+              icon="⚙️"
+              label="Ir a configuracion"
+            />
+          )}
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
-          <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
-            Ganancia por dia
-          </div>
-          <div className="mb-4 text-xs text-[#999]">Ultimos 7 dias hasta hoy</div>
-          <RevenueChart
-            color={accentColor}
-            series={
-              dashboard?.weeklyRevenue.length
-                ? dashboard.weeklyRevenue
-                : Array.from({ length: 7 }, (_, index) => ({
-                    serviceDate: `empty-revenue-${index}`,
-                    label: `D${index + 1}`,
-                    revenueCents: 0,
-                  }))
-            }
-          />
-        </section>
+      {canViewDashboard ? (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
+            <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
+              Ganancia por dia
+            </div>
+            <div className="mb-4 text-xs text-[#999]">Ultimos 7 dias hasta hoy</div>
+            <RevenueChart
+              color={accentColor}
+              series={
+                dashboard?.weeklyRevenue.length
+                  ? dashboard.weeklyRevenue
+                  : Array.from({ length: 7 }, (_, index) => ({
+                      serviceDate: `empty-revenue-${index}`,
+                      label: `D${index + 1}`,
+                      revenueCents: 0,
+                    }))
+              }
+            />
+          </section>
 
-        <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
-          <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
-            Pedidos por hora
-          </div>
-          <div className="mb-4 text-xs text-[#999]">Distribucion del dia actual</div>
-          <CountChart
-            color={accentColor}
-            series={
-              dashboard?.hourlyOrders.length
-                ? dashboard.hourlyOrders
-                : Array.from({ length: 11 }, (_, index) => ({
-                    label: String(12 + index).padStart(2, "0"),
-                    count: 0,
-                  }))
-            }
-          />
-        </section>
+          <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
+            <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
+              Pedidos por hora
+            </div>
+            <div className="mb-4 text-xs text-[#999]">Distribucion del dia actual</div>
+            <CountChart
+              color={accentColor}
+              series={
+                dashboard?.hourlyOrders.length
+                  ? dashboard.hourlyOrders
+                  : Array.from({ length: 11 }, (_, index) => ({
+                      label: String(12 + index).padStart(2, "0"),
+                      count: 0,
+                    }))
+              }
+            />
+          </section>
 
-        <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
-          <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
-            Ticket promedio por dia
-          </div>
-          <div className="mb-4 text-xs text-[#999]">Promedio de valor por ticket en la semana</div>
-          <AverageTicketChart
-            color="#3b82f6"
-            series={
-              dashboard?.weeklyAverageTicket.length
-                ? dashboard.weeklyAverageTicket
-                : Array.from({ length: 7 }, (_, index) => ({
-                    serviceDate: `empty-ticket-${index}`,
-                    label: `D${index + 1}`,
-                    averageTicketCents: null,
-                  }))
-            }
-          />
-        </section>
+          <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
+            <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
+              Ticket promedio por dia
+            </div>
+            <div className="mb-4 text-xs text-[#999]">Promedio de valor por ticket en la semana</div>
+            <AverageTicketChart
+              color="#3b82f6"
+              series={
+                dashboard?.weeklyAverageTicket.length
+                  ? dashboard.weeklyAverageTicket
+                  : Array.from({ length: 7 }, (_, index) => ({
+                      serviceDate: `empty-ticket-${index}`,
+                      label: `D${index + 1}`,
+                      averageTicketCents: null,
+                    }))
+              }
+            />
+          </section>
 
-        <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
-          <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
-            Tiempo promedio por dia
-          </div>
-          <div className="mb-4 text-xs text-[#999]">Promedio real hasta que cada ticket queda listo</div>
-          <PreparationChart
-            color="#14b8a6"
-            series={
-              dashboard?.weeklyAveragePreparation.length
-                ? dashboard.weeklyAveragePreparation
-                : Array.from({ length: 7 }, (_, index) => ({
-                    serviceDate: `empty-preparation-${index}`,
-                    label: `D${index + 1}`,
-                    averagePreparationSeconds: null,
-                  }))
-            }
-          />
-        </section>
-      </div>
+          <section className="rounded-xl border border-[#e8e8e8] bg-white p-5 transition dark:border-[#2e2e2e] dark:bg-[#1a1a1a]">
+            <div className="mb-1 text-sm font-bold text-[#111] dark:text-[#f5f5f5]">
+              Tiempo promedio por dia
+            </div>
+            <div className="mb-4 text-xs text-[#999]">Promedio real hasta que cada ticket queda listo</div>
+            <PreparationChart
+              color="#14b8a6"
+              series={
+                dashboard?.weeklyAveragePreparation.length
+                  ? dashboard.weeklyAveragePreparation
+                  : Array.from({ length: 7 }, (_, index) => ({
+                      serviceDate: `empty-preparation-${index}`,
+                      label: `D${index + 1}`,
+                      averagePreparationSeconds: null,
+                    }))
+              }
+            />
+          </section>
+        </div>
+      ) : null}
 
-      {dashboardQuery.isError ? (
+      {canViewDashboard && dashboardQuery.isError ? (
         <div className="mt-5">
           <div className="rounded-xl border border-[#ef4444]/25 bg-[#ef4444]/10 p-5">
             <div className="text-sm font-bold text-[#ef4444]">

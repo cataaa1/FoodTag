@@ -18,6 +18,7 @@ type StaffUserRow = {
   password_hash: string;
   role_id: string;
   active: number;
+  is_super_admin: number;
   created_at: string;
 };
 
@@ -40,6 +41,7 @@ function mapStaffUser(row: StaffUserRow): StaffUser {
     fullName: row.full_name,
     roleId: row.role_id,
     active: Boolean(row.active),
+    isSuperAdmin: Boolean(row.is_super_admin),
     createdAt: row.created_at,
   };
 }
@@ -121,14 +123,41 @@ export async function getStaffContext(): Promise<StaffContext | null> {
 }
 
 export async function requireStaffPermission(permission: PermissionKey) {
+  const context = await requireStaffSession();
+
+  if (!hasPermission(context.role.permissionsJson, permission)) {
+    throw new ApiError(403, "FORBIDDEN", "No tenés permiso para esta acción");
+  }
+
+  return context;
+}
+
+/**
+ * Cualquier miembro del staff autenticado, sin exigir un permiso puntual.
+ * Lo usan las vistas de solo lectura (horarios) y el panel de cuenta.
+ */
+export async function requireStaffSession() {
   const context = await getStaffContext();
 
   if (!context) {
     throw new ApiError(401, "UNAUTHORIZED", "Sesión inválida");
   }
 
-  if (!hasPermission(context.role.permissionsJson, permission)) {
-    throw new ApiError(403, "FORBIDDEN", "No tenés permiso para esta acción");
+  return context;
+}
+
+/**
+ * Solo el super admin puede dar de alta cuentas y tocar roles.
+ */
+export async function requireSuperAdmin() {
+  const context = await requireStaffSession();
+
+  if (!context.user.isSuperAdmin) {
+    throw new ApiError(
+      403,
+      "FORBIDDEN",
+      "Solo el super admin puede administrar cuentas y roles",
+    );
   }
 
   return context;

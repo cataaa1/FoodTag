@@ -84,6 +84,7 @@ export type StaffUser = {
   fullName: string;
   roleId: string;
   active: boolean;
+  isSuperAdmin: boolean;
   createdAt: string;
 };
 
@@ -177,6 +178,11 @@ export type CustomerOrder = {
   modificationRequests: OrderModificationRequest[];
 };
 
+/**
+ * Payload liviano que se pollea cada 5 s. NO incluye imagenes: el logo y el
+ * hero se guardan como data URI en la DB y pesan cientos de KB. Van aparte en
+ * TruckBranding, que se pide una sola vez y se cachea.
+ */
 export type TruckStatus = {
   isOpen: boolean;
   nextOpeningLabel: string | null;
@@ -184,16 +190,23 @@ export type TruckStatus = {
   reason: string | null;
   truckName: string;
   address: string;
-  heroImageUrl: string | null;
   publicTagline: string;
   instagramHandle: string | null;
   brandIcon: string;
-  logoUrl: string | null;
   primaryColor: string;
   todayHoursLabel: string;
   allowOrderModifications: boolean;
   beepSoundId: string;
   customerPickupCooldownSeconds: number;
+};
+
+/** Identidad visual del truck. Cambia muy de vez en cuando: se cachea fuerte. */
+export type TruckBranding = {
+  truckName: string;
+  brandIcon: string;
+  primaryColor: string;
+  logoUrl: string | null;
+  heroImageUrl: string | null;
 };
 
 export type MenuCategoryWithItems = Category & {
