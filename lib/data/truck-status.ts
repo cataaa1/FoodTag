@@ -232,7 +232,10 @@ export async function countTrucks(): Promise<number> {
 /** True cuando la request no tiene truck fijado y hay mas de uno para elegir. */
 export async function isTruckAmbiguous(): Promise<boolean> {
   const cookieStore = await cookies();
-  if (cookieStore.get(PUBLIC_TRUCK_COOKIE)?.value) return false;
+  const publicTruckId = cookieStore.get(PUBLIC_TRUCK_COOKIE)?.value;
+  // Una cookie de un truck que ya no existe (borrado, base re-seedeada) no fija
+  // nada: sin este chequeo getPublicTruckId caia en silencio al primer truck.
+  if (publicTruckId && (await truckIdExists(publicTruckId))) return false;
 
   return (await countTrucks()) > 1;
 }
