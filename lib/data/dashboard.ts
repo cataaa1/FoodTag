@@ -221,6 +221,7 @@ export async function getDashboardToday(): Promise<DashboardToday> {
         group by service_date
       `,
       args: [
+        truckId,
         recentDates[0]?.serviceDate ?? serviceDate,
         recentDates.at(-1)?.serviceDate ?? serviceDate,
       ],
