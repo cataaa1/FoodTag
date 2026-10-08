@@ -3,6 +3,10 @@ import { redirect } from "next/navigation";
 import { TruckPickerScreen } from "@/components/customer/truck-picker-screen";
 import { countTrucks } from "@/lib/data/truck-status";
 
+// Sin esto Next prerenderiza la raiz en el build y la cantidad de trucks queda
+// congelada hasta el proximo deploy: crear o borrar uno no cambiaba nada.
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   // La raiz es la puerta de entrada general (el link de la app, la PWA sin
   // ticket): con varios foodtrucks siempre muestra la lista para elegir, aunque
