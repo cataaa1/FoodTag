@@ -1,193 +1,156 @@
 Fotos de los productos de los foodtrucks de demo.
-Todas tienen licencia libre (Creative Commons o dominio público), obtenidas via Openverse.
+Todas son de Pixabay, bajo la Pixabay Content License: uso libre, se pueden
+modificar y no exigen atribucion. Igual dejamos el autor y la fuente de cada una.
 Se recortaron a 360x360 y se convirtieron a WEBP.
 
 classic-smash.webp
-  "2022 Home Cookin' 9" por anoldent (flickr)
-  Licencia: CC BY-SA 2.0
-  https://www.flickr.com/photos/8563790@N08/51886602404
+  Foto de leonardovieira260998 en Pixabay
+  https://pixabay.com/photos/hamburger-snack-cheeseburger-7191902/
 
 oklahoma.webp
-  "In-side-Out Burger" por laurenbosak (flickr)
-  Licencia: CC BY-SA 2.0
-  https://www.flickr.com/photos/47993825@N05/5315307282
+  Foto de SabaImdad19 en Pixabay
+  https://pixabay.com/photos/cheeseburger-hamburger-food-snack-8678826/
 
 crispy-chicken.webp
-  "Chick-Fil-A Chicken Sandwich" por Link576 (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/41943909@N03/4425518949
+  Foto de shouravsheikh en Pixabay
+  https://pixabay.com/photos/burger-spicy-healthy-food-chicken-4307719/
 
 veggie-smash.webp
-  "Veggie Burger KCI_1517" por kurmanstaff (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/62558987@N07/11740453525
+  Foto de Unijewels en Pixabay
+  https://pixabay.com/photos/meal-burger-onion-avocado-veggi-1352880/
 
 bbq-bacon.webp
-  "Mmmmmmmmm" por Super Rabbit One (flickr)
-  Licencia: CC BY-SA 2.0
-  https://www.flickr.com/photos/33498328@N00/106725047
+  Foto de Hansuan_Fabregas en Pixabay
+  https://pixabay.com/photos/cheeseburger-bacon-mayo-cheddar-7580676/
 
 combo-classic.webp
-  "1/3 lb. Bacon Burger with fries at Hegenburger" por pointnshoot (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/18244673@N00/678872722
+  Foto de Mirko_Fabian en Pixabay
+  https://pixabay.com/photos/burger-meal-fast-food-food-7165155/
 
 combo-pareja.webp
-  "One and done" por chief_huddleston (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/9265232@N04/8730563732
+  Foto de hellosoyeon en Pixabay
+  https://pixabay.com/photos/burger-hamburger-habit-obesity-2333280/
 
 papas-fritas.webp
-  "french fries" por stu_spivack (flickr)
-  Licencia: CC BY-SA 2.0
-  https://www.flickr.com/photos/35034346243@N01/2932206250
+  Foto de Pexels en Pixabay
+  https://pixabay.com/photos/bowl-french-fries-food-fries-1842294/
 
 papas-cheddar-bacon.webp
-  "Mmm... chili cheese fries" por jeffreyw (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/7927684@N03/7235184660
+  Foto de Hans en Pixabay
+  https://pixabay.com/photos/french-fries-meal-fries-461705/
 
 aros-de-cebolla.webp
-  "Mmm... pancake batter coated onion rings" por jeffreyw (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/7927684@N03/7672333050
+  Foto de infosilproduction en Pixabay
+  https://pixabay.com/photos/food-restaurant-cafe-dining-dinner-3669928/
 
 gaseosa.webp
-  "Always Coca-Cola" por Julien.Belli (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/125615321@N04/22430593195
+  Foto de Bru-nO en Pixabay
+  https://pixabay.com/photos/coke-cola-brand-drink-lemonade-2099000/
 
 limonada.webp
-  "Mojito" por TheCulinaryGeek (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/72949902@N00/5084101811
+  Foto de AS_Photography en Pixabay
+  https://pixabay.com/photos/drink-glass-lime-mint-cold-fresh-1532300/
 
 agua-mineral.webp
-  "Bottled water" por TheDigitel Myrtle Beach (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/63360473@N08/6972595593
+  Foto de jarmoluk en Pixabay
+  https://pixabay.com/photos/water-bottle-desire-mineral-water-2105213/
 
 cookie.webp
-  "Browned butter chocolate chip cookies" por grongar (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/70757891@N00/7133349441
+  Foto de RomeoandJuliet en Pixabay
+  https://pixabay.com/photos/chocolate-cookies-5494630/
 
 milkshake.webp
-  "Chocolate banana milkshake ingredients" por Alexandra E Rust (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/69670601@N05/9771001476
+  Foto de wbwishbest en Pixabay
+  https://pixabay.com/photos/milkshake-juice-drink-refreshment-6578503/
 
 burger-del-mes.webp
-  "Giant mushroom burger from Gourmet Burger Kitchen" por Ben Sutherland (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/60179301@N00/4970260463
+  Foto de Pexels en Pixabay
+  https://pixabay.com/photos/beef-bread-bun-burger-dish-1845296/
 
 tacos-al-pastor.webp
-  "Tacos al Pastor" por Ari Helminen (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/36093266@N06/4401140214
+  Foto de Yezmin en Pixabay
+  https://pixabay.com/photos/tacos-pastor-tacos-tacos-mexico-4505032/
 
 tacos-birria.webp
-  "Crispy shrimp & birria taco and a crispy chicken taco with salsa" por sarahstierch (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/7633518@N08/53633141550
+  Foto de ChefSantana en Pixabay
+  https://pixabay.com/photos/tacos-taco-mexico-tortilla-kitchen-4858335/
 
 tacos-hongos.webp
-  "Sauteed maitake mushroom tacos, mole, kale, lime" por T.Tseng (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/68147320@N02/11661243785
+  Foto de VinaConstanze en Pixabay
+  https://pixabay.com/photos/tacos-mexican-meal-yummy-1613795/
 
 burrito.webp
-  "Mmm... beef and bean burritos" por jeffreyw (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/7927684@N03/8628568071
+  Foto de adoproducciones en Pixabay
+  https://pixabay.com/photos/burrito-mexican-food-dish-meal-7217208/
 
 quesadilla.webp
-  "Mmm... breakfast quesadilla with eggs and chorizo" por jeffreyw (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/7927684@N03/6045328855
+  Foto de tehzeebkazmii en Pixabay
+  https://pixabay.com/photos/quesadilla-tortilla-cheese-grilled-10391439/
 
 nachos.webp
-  "If it's nacho cheese...?" por Jason Rosenberg (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/20009658@N00/16398549246
+  Foto de bknox99 en Pixabay
+  https://pixabay.com/photos/nachos-barbecue-nachos-mexican-5740731/
 
 guacamole.webp
-  "Margaritas, guacamole, chips. Perfect evening with friends. #100happydays #100happydays_fiver" por fiverlocker (flickr)
-  Licencia: CC BY-SA 2.0
-  https://www.flickr.com/photos/32811308@N00/12211707026
+  Foto de stevepb en Pixabay
+  https://pixabay.com/photos/avocado-salad-fresh-food-829092/
 
 agua-jamaica.webp
-  "Agua de Jamaica - Hibiscus Punch" por FoodCraftLab (flickr)
-  Licencia: CC BY-SA 2.0
-  https://www.flickr.com/photos/134946786@N05/19857462120
+  Foto de Pcat007 en Pixabay
+  https://pixabay.com/photos/beverage-drink-dessert-tasty-fresh-8019208/
 
 horchata.webp
-  "Horchata mixta, fartóns y buñuelos... todo light y sin calorías :-)" por edans (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/16189770@N00/33474788310
+  Foto de Bru-nO en Pixabay
+  https://pixabay.com/photos/coffee-caf%C3%A9-au-lait-latte-macchiato-3009937/
 
 cerveza.webp
-  "Minion Phil with a Pint of Beer" por Wilson Hui (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/51942038@N04/16734120886
+  Foto de manfredrichter en Pixabay
+  https://pixabay.com/photos/beer-drink-pint-tankard-glass-5801207/
 
 churros.webp
-  "Churros with Chocolate Sauce - Chocolateria San Churro" por avlxyz (flickr)
-  Licencia: CC BY-SA 2.0
-  https://www.flickr.com/photos/10559879@N00/348229335
+  Foto de socratesmizerski en Pixabay
+  https://pixabay.com/photos/transfer-the-dough-to-a-sweet-cone-4592535/
 
 flat-white.webp
-  "Flat white coffee at Axil Coffee in Hawthorn" por ultrakml (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/34948727@N00/17350959312
+  Foto de pasrasaa en Pixabay
+  https://pixabay.com/photos/coffee-flat-white-cafe-brown-coffee-1582555/
 
 latte.webp
-  "Caffe Latte art - Brother Baba Budan AUD3" por avlxyz (flickr)
-  Licencia: CC BY-SA 2.0
-  https://www.flickr.com/photos/10559879@N00/3224683588
+  Foto de Pexels en Pixabay
+  https://pixabay.com/photos/caffeine-coffee-cup-coffee-cup-1866758/
 
 espresso.webp
-  "Espresso cups" por mdid (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/58246614@N00/2103960100
+  Foto de 13027327 en Pixabay
+  https://pixabay.com/photos/coffee-cappuccino-latte-espresso-4334647/
 
 cold-brew.webp
-  "Iced Coffee - Mitte AUD5" por avlxyz (flickr)
-  Licencia: CC BY-SA 2.0
-  https://www.flickr.com/photos/10559879@N00/4258134605
+  Foto de WillyGo503 en Pixabay
+  https://pixabay.com/photos/coffee-iced-coffee-beverage-7186678/
 
 medialunas.webp
-  "Croissant" por Blarvar (flickr)
-  Licencia: Dominio público
-  https://www.flickr.com/photos/46583370@N04/4599562280
+  Foto de Pexels en Pixabay
+  https://pixabay.com/photos/bread-croissant-morning-puff-paste-1284438/
 
 cheesecake.webp
-  "Baked Cheesecake" por zingyyellow...! (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/28576278@N03/3375309464
+  Foto de JillWellington en Pixabay
+  https://pixabay.com/photos/cheesecake-fruit-strawberries-4353495/
 
 budin-limon.webp
-  "Lemon pound cake copy" por Southern Foodways Alliance (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/25257922@N07/3304735313
+  Foto de TheDesignLady87 en Pixabay
+  https://pixabay.com/photos/lemon-cake-cake-dessert-lemon-8274419/
 
 tostado.webp
-  "Ham & Cheese Toasted Sandwich" por Chris Bloom (flickr)
-  Licencia: CC BY-SA 2.0
-  https://www.flickr.com/photos/51048785@N00/2659216670
+  Foto de bhumann34 en Pixabay
+  https://pixabay.com/photos/food-panini-ham-cheese-bread-1179398/
 
 avocado-toast.webp
-  "Skinny-Fried-Egg-and-Avo-Toast-Perfect-breakfast-yum" por megh28 (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/156883244@N04/35555668790
+  Foto de TerriAnneAllen en Pixabay
+  https://pixabay.com/photos/breakfast-avocado-toast-delicious-4824116/
 
 alfajor.webp
-  "Alfajores" por lovelihood (flickr)
-  Licencia: CC BY-SA 2.0
-  https://www.flickr.com/photos/44258887@N04/4210651480
+  Foto de cristhiandavid86 en Pixabay
+  https://pixabay.com/photos/caramel-cookie-sweet-breakfast-6789659/
 
 brownie.webp
-  "brownies...yawn...boooring" por jeffreyw (flickr)
-  Licencia: CC BY 2.0
-  https://www.flickr.com/photos/7927684@N03/4448807631
+  Foto de blisscafekrian en Pixabay
+  https://pixabay.com/photos/brownies-chocolate-snack-brownie-4062740/
