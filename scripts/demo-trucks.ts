@@ -29,6 +29,8 @@ export type DemoItem = {
   description: string;
   priceCents: number;
   available?: boolean;
+  /** Archivo en public/menu-demo/ (sin extension). Fuentes en CREDITOS.txt. */
+  photo?: string;
   variants?: DemoVariant[];
   /** Opciones del producto. `true` = marcada por defecto. */
   modifiers?: Array<[label: string, defaultChecked: boolean]>;
@@ -167,6 +169,7 @@ const SMASH: DemoTruck = {
       items: [
         {
           name: "Classic Smash",
+          photo: "classic-smash",
           description: "Medallones aplastados en la plancha, cheddar, pickles y salsa de la casa",
           priceCents: 8_900_00,
           variants: [
@@ -184,6 +187,7 @@ const SMASH: DemoTruck = {
         },
         {
           name: "Oklahoma",
+          photo: "oklahoma",
           description: "Cebolla en pluma smasheada junto con la carne, cheddar y mostaza",
           priceCents: 9_800_00,
           variants: [
@@ -197,6 +201,7 @@ const SMASH: DemoTruck = {
         },
         {
           name: "Crispy Chicken",
+          photo: "crispy-chicken",
           description: "Pollo frito crocante, coleslaw y mayo de ajo ahumado",
           priceCents: 9_200_00,
           modifiers: [
@@ -207,6 +212,7 @@ const SMASH: DemoTruck = {
         },
         {
           name: "Veggie Smash",
+          photo: "veggie-smash",
           description: "Medallón de garbanzos y hongos, cheddar vegano y tomate",
           priceCents: 8_600_00,
           modifiers: [
@@ -216,6 +222,7 @@ const SMASH: DemoTruck = {
         },
         {
           name: "BBQ Bacon",
+          photo: "bbq-bacon",
           description: "Doble carne, bacon, aros de cebolla y barbacoa",
           priceCents: 12_900_00,
           available: false,
@@ -227,6 +234,7 @@ const SMASH: DemoTruck = {
       items: [
         {
           name: "Combo Classic",
+          photo: "combo-classic",
           description: "Classic Smash doble + papas medianas + gaseosa",
           priceCents: 15_900_00,
           modifiers: [
@@ -236,6 +244,7 @@ const SMASH: DemoTruck = {
         },
         {
           name: "Combo Pareja",
+          photo: "combo-pareja",
           description: "Dos Classic Smash simples + papas grandes + dos gaseosas",
           priceCents: 26_500_00,
         },
@@ -246,6 +255,7 @@ const SMASH: DemoTruck = {
       items: [
         {
           name: "Papas fritas",
+          photo: "papas-fritas",
           description: "Corte bastón, doble cocción, sal en escamas",
           priceCents: 4_200_00,
           variants: [
@@ -255,6 +265,7 @@ const SMASH: DemoTruck = {
         },
         {
           name: "Papas Cheddar & Bacon",
+          photo: "papas-cheddar-bacon",
           description: "Con cheddar fundido, bacon crocante y verdeo",
           priceCents: 6_800_00,
           modifiers: [
@@ -264,6 +275,7 @@ const SMASH: DemoTruck = {
         },
         {
           name: "Aros de cebolla",
+          photo: "aros-de-cebolla",
           description: "Rebozados en cerveza, con dip de barbacoa",
           priceCents: 5_200_00,
         },
@@ -274,12 +286,14 @@ const SMASH: DemoTruck = {
       items: [
         {
           name: "Gaseosa",
+          photo: "gaseosa",
           description: "Coca-Cola, Sprite o Fanta · lata 354ml",
           priceCents: 2_500_00,
           modifiers: [["Con hielo", true]],
         },
         {
           name: "Limonada de la casa",
+          photo: "limonada",
           description: "Con menta y jengibre",
           priceCents: 3_800_00,
           variants: [
@@ -287,7 +301,7 @@ const SMASH: DemoTruck = {
             { name: "1 litro", priceCents: 6_500_00 },
           ],
         },
-        { name: "Agua mineral", description: "500ml, con o sin gas", priceCents: 2_000_00 },
+        { name: "Agua mineral", photo: "agua-mineral", description: "500ml, con o sin gas", priceCents: 2_000_00 },
       ],
     },
     {
@@ -295,11 +309,13 @@ const SMASH: DemoTruck = {
       items: [
         {
           name: "Cookie de chocolate",
+          photo: "cookie",
           description: "Tibia, con chips de chocolate amargo",
           priceCents: 3_200_00,
         },
         {
           name: "Milkshake",
+          photo: "milkshake",
           description: "Vainilla, chocolate o dulce de leche",
           priceCents: 5_900_00,
           available: false,
@@ -312,6 +328,7 @@ const SMASH: DemoTruck = {
       items: [
         {
           name: "Burger del mes",
+          photo: "burger-del-mes",
           description: "Provoleta, morrones asados y chimichurri. Se activa los viernes.",
           priceCents: 13_500_00,
         },
@@ -458,6 +475,7 @@ const TACOS: DemoTruck = {
       items: [
         {
           name: "Tacos al pastor",
+          photo: "tacos-al-pastor",
           description: "Cerdo adobado, ananá asado, cebolla y cilantro",
           priceCents: 7_500_00,
           variants: [
@@ -473,6 +491,7 @@ const TACOS: DemoTruck = {
         },
         {
           name: "Tacos de birria",
+          photo: "tacos-birria",
           description: "Carne braseada 8 horas, queso y consomé para mojar",
           priceCents: 8_900_00,
           variants: [
@@ -486,6 +505,7 @@ const TACOS: DemoTruck = {
         },
         {
           name: "Tacos de hongos",
+          photo: "tacos-hongos",
           description: "Hongos salteados, porotos negros y pico de gallo",
           priceCents: 7_000_00,
           variants: [
@@ -500,6 +520,7 @@ const TACOS: DemoTruck = {
       items: [
         {
           name: "Burrito de carne",
+          photo: "burrito",
           description: "Carne desmechada, arroz, porotos, queso y guacamole",
           priceCents: 9_900_00,
           modifiers: [
@@ -511,6 +532,7 @@ const TACOS: DemoTruck = {
         },
         {
           name: "Quesadilla",
+          photo: "quesadilla",
           description: "Tortilla de trigo con mozzarella y cheddar",
           priceCents: 6_500_00,
           variants: [
@@ -525,6 +547,7 @@ const TACOS: DemoTruck = {
       items: [
         {
           name: "Nachos supremos",
+          photo: "nachos",
           description: "Totopos, cheddar, carne, pico de gallo, guacamole y jalapeños",
           priceCents: 11_000_00,
           modifiers: [
@@ -534,6 +557,7 @@ const TACOS: DemoTruck = {
         },
         {
           name: "Guacamole con totopos",
+          photo: "guacamole",
           description: "Palta pisada al momento, lima y cilantro",
           priceCents: 6_800_00,
           available: false,
@@ -545,12 +569,14 @@ const TACOS: DemoTruck = {
       items: [
         {
           name: "Agua de jamaica",
+          photo: "agua-jamaica",
           description: "Infusión fría de flor de jamaica, 500ml",
           priceCents: 3_500_00,
         },
-        { name: "Horchata", description: "Bebida de arroz con canela, 500ml", priceCents: 3_800_00 },
+        { name: "Horchata", photo: "horchata", description: "Bebida de arroz con canela, 500ml", priceCents: 3_800_00 },
         {
           name: "Cerveza artesanal",
+          photo: "cerveza",
           description: "Pinta de lager mexicana con lima",
           priceCents: 5_500_00,
           modifiers: [["Con sal y limón en el borde", false]],
@@ -562,6 +588,7 @@ const TACOS: DemoTruck = {
       items: [
         {
           name: "Churros",
+          photo: "churros",
           description: "Con azúcar y canela",
           priceCents: 4_500_00,
           variants: [
@@ -654,6 +681,7 @@ const CAFE: DemoTruck = {
       items: [
         {
           name: "Flat white",
+          photo: "flat-white",
           description: "Doble ristretto con leche texturizada",
           priceCents: 3_900_00,
           variants: [
@@ -668,6 +696,7 @@ const CAFE: DemoTruck = {
         },
         {
           name: "Latte",
+          photo: "latte",
           description: "Espresso con mucha leche y espuma fina",
           priceCents: 3_700_00,
           variants: [
@@ -680,9 +709,10 @@ const CAFE: DemoTruck = {
             ["Con jarabe de vainilla", false],
           ],
         },
-        { name: "Espresso", description: "Blend de Brasil y Colombia", priceCents: 2_600_00 },
+        { name: "Espresso", photo: "espresso", description: "Blend de Brasil y Colombia", priceCents: 2_600_00 },
         {
           name: "Cold brew",
+          photo: "cold-brew",
           description: "Extracción en frío de 18 horas",
           priceCents: 4_500_00,
           modifiers: [
@@ -697,6 +727,7 @@ const CAFE: DemoTruck = {
       items: [
         {
           name: "Medialunas",
+          photo: "medialunas",
           description: "De manteca, recién horneadas",
           priceCents: 1_200_00,
           available: false,
@@ -708,10 +739,11 @@ const CAFE: DemoTruck = {
         },
         {
           name: "Cheesecake de frutos rojos",
+          photo: "cheesecake",
           description: "Porción, base de galletita y coulis casero",
           priceCents: 5_400_00,
         },
-        { name: "Budín de limón", description: "Porción con glaseado de limón", priceCents: 2_900_00 },
+        { name: "Budín de limón", photo: "budin-limon", description: "Porción con glaseado de limón", priceCents: 2_900_00 },
       ],
     },
     {
@@ -719,6 +751,7 @@ const CAFE: DemoTruck = {
       items: [
         {
           name: "Tostado",
+          photo: "tostado",
           description: "Pan de campo, jamón cocido y queso",
           priceCents: 5_800_00,
           modifiers: [
@@ -728,6 +761,7 @@ const CAFE: DemoTruck = {
         },
         {
           name: "Avocado toast",
+          photo: "avocado-toast",
           description: "Palta, huevo poché y semillas",
           priceCents: 7_200_00,
           modifiers: [["Con huevo", true]],
@@ -737,8 +771,8 @@ const CAFE: DemoTruck = {
     {
       name: "Sin TACC",
       items: [
-        { name: "Alfajor sin TACC", description: "De maicena, apto celíacos", priceCents: 2_400_00 },
-        { name: "Brownie sin TACC", description: "Con nueces, apto celíacos", priceCents: 3_600_00 },
+        { name: "Alfajor sin TACC", photo: "alfajor", description: "De maicena, apto celíacos", priceCents: 2_400_00 },
+        { name: "Brownie sin TACC", photo: "brownie", description: "Con nueces, apto celíacos", priceCents: 3_600_00 },
       ],
     },
   ],

@@ -15,7 +15,16 @@ const dataImageSchema = z
     "UsÃ¡ una imagen JPG, PNG o WEBP",
   );
 
-const optionalImageSchema = z.union([z.string().url(), dataImageSchema]).nullable();
+// Imagen servida por la propia app desde /public (las fotos de los trucks de
+// demo viven en /menu-demo). Solo una ruta de archivo, sin "//" para que no se
+// pueda colar una URL de otro dominio como "//evil.com/x.png".
+const sitePathImageSchema = z
+  .string()
+  .regex(/^\/(?!\/)[\w\-./]+\.(?:webp|jpe?g|png)$/i, "Ruta de imagen inválida");
+
+const optionalImageSchema = z
+  .union([z.string().url(), sitePathImageSchema, dataImageSchema])
+  .nullable();
 
 export const categoryRowSchema = z.object({
   id: z.string().uuid(),

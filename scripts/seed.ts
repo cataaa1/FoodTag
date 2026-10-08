@@ -231,10 +231,10 @@ function buildMenuStatements(truckId: string, truck: DemoTruck) {
       statements.push({
         sql: `
           insert into menu_item (
-            id, truck_id, category_id, name, description, price_cents,
+            id, truck_id, category_id, name, description, price_cents, photo_url,
             available, has_variants, position
           )
-          values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         args: [
           itemId,
@@ -243,6 +243,8 @@ function buildMenuStatements(truckId: string, truck: DemoTruck) {
           item.name,
           item.description,
           item.priceCents,
+          // Ruta del propio sitio y no data URI: /api/menu no carga el peso de las fotos.
+          item.photo ? `/menu-demo/${item.photo}.webp` : null,
           available ? 1 : 0,
           item.variants?.length ? 1 : 0,
           itemPosition,
