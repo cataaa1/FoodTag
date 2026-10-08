@@ -625,7 +625,7 @@ function UserModal({
           />
           {passwordTooShort ? (
             <p className="mt-1.5 text-[11px] font-semibold text-[#ef4444]">
-              La contraseÃ±a debe tener al menos 8 caracteres.
+              La contraseña debe tener al menos 8 caracteres.
             </p>
           ) : null}
         </Field>
@@ -690,7 +690,7 @@ function UserModal({
       </div>
       {disabled && passwordTooShort ? (
         <p className="mt-2 text-center text-[11px] font-semibold text-[#999]">
-          CompletÃ¡ una contraseÃ±a de 8 caracteres o mÃ¡s para habilitar el guardado.
+          Completá una contraseña de 8 caracteres o más para habilitar el guardado.
         </p>
       ) : null}
     </ModalFrame>

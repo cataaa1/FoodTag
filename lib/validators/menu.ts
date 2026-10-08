@@ -12,7 +12,7 @@ const dataImageSchema = z
       value.startsWith("data:image/jpeg;base64,") ||
       value.startsWith("data:image/png;base64,") ||
       value.startsWith("data:image/webp;base64,"),
-    "UsÃ¡ una imagen JPG, PNG o WEBP",
+    "Usá una imagen JPG, PNG o WEBP",
   );
 
 // Imagen servida por la propia app desde /public (las fotos de los trucks de
